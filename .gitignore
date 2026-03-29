@@ -1,0 +1,41 @@
+# Secrets and credentials — NEVER commit these
+secrets.env
+*.env
+*.key
+*.pem
+*.p12
+service-account*.json
+bigquery-service-account.json
+
+# Credentials folders
+credentials/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# BigQuery staging (transient, cleared each cycle)
+bq_staging.jsonl
+intent_context.jsonl
+
+# Log files (operational, not source)
+automation_log*.txt
+reconciler_log*.txt
+accuracy_report_*.txt
+
+# Keep accuracy_report_latest.txt out too (regenerated each Monday)
+accuracy_report_latest.txt
+
+# Label and KB cache (local runtime files, regenerated automatically)
+label_cache.json
+kb_cache/
+
+# Temp MCP config files written at runtime
+_mcp_*.json
+
+# Windows
+Thumbs.db
+Desktop.ini

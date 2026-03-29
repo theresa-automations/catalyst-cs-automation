@@ -1,0 +1,56 @@
+{
+  "mcpServers": {
+    "local-files": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:\\Users\\pc\\Documents\\Catalyst-Projects",
+        "C:\\Users\\pc\\Documents\\LinkedIn Project",
+        "H:\\"
+      ]
+    },
+    "gdrive": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\pc\\gdrive-mcp-server\\dist\\index.js"
+      ],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "C:\\Users\\pc\\gdrive-mcp-server\\credentials\\gcp-oauth.keys.json",
+        "MCP_GDRIVE_CREDENTIALS": "C:\\Users\\pc\\gdrive-mcp-server\\credentials\\.gdrive-server-credentials.json"
+      }
+    },
+    "gmail": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@gongrzhe/server-gmail-autoauth-mcp"
+      ]
+    },
+    "shopify-manager-catalystcase": {
+      "command": "C:\\Users\\pc\\AppData\\Roaming\\npm\\shopify-mcp-server.cmd",
+      "env": {
+        "SHOPIFY_STORE_DOMAIN": "catalystcase.myshopify.com",
+        "SHOPIFY_ACCESS_TOKEN": "${SHOPIFY_TOKEN_CATALYSTCASE}",
+        "SHOPIFY_LOG_LEVEL": "warning"
+      }
+    },
+    "shopify-manager-catalystlifestyle": {
+      "command": "C:\\Users\\pc\\AppData\\Roaming\\npm\\shopify-mcp-server.cmd",
+      "env": {
+        "SHOPIFY_STORE_DOMAIN": "catalystlifestyle.myshopify.com",
+        "SHOPIFY_ACCESS_TOKEN": "${SHOPIFY_TOKEN_CATALYSTLIFESTYLE}",
+        "SHOPIFY_LOG_LEVEL": "warning"
+      }
+    },
+    "bigquery": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@ergut/mcp-bigquery-server",
+        "--project-id", "cs-mcp-gateway",
+        "--key-file", "C:\\Users\\pc\\gdrive-mcp-server\\credentials\\bigquery-service-account.json"
+      ]
+    }
+  }
+}

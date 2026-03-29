@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Date>2026-02-27T12:05:43.8506287</Date>
+    <Author>DESKTOP-K05KQJ6\pc</Author>
+    <Description>Hourly automation that triggers the Catalyst CS automation workflow via Claude CLI. Runs every 1 hour during operating hours (6am-11pm WAT). Automatically triages, cleans up, and drafts responses for customer emails from Catalyst Case (US) and Catalyst Lifestyle (International) stores, using Shopify order data and Google Drive knowledge base.</Description>
+    <URI>\Catalyst CS Automation</URI>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Author">
+      <UserId>S-1-5-21-3728110744-218921949-1895599404-1001</UserId>
+      <LogonType>Password</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>
+    <IdleSettings>
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>
+  </Settings>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-02-27T06:00:00</StartBoundary>
+      <Repetition>
+        <Interval>PT1H</Interval>
+        <Duration>PT17H</Duration>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Python314\python.exe</Command>
+      <Arguments>"C:\Users\pc\Documents\Catalyst-Projects\catalyst_cs_automation.py"</Arguments>
+      <WorkingDirectory>C:\Users\pc</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

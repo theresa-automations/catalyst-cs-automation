@@ -1,0 +1,649 @@
+================================================================================
+STATE OF THINGS LOG — Catalyst CS Automation Project
+================================================================================
+PURPOSE: This file is the first thing a new Claude conversation should read to
+come up to speed without trawling through automation_log.txt, roadmap docs, or
+prompt files. It is updated at the end of EVERY conversation on this project.
+READ THIS FIRST. Then read roadmap only if you need phase-level detail.
+
+RULES FOR CLAUDE:
+1. READ this file at the start of every new conversation on this project.
+2. PROMPT the user to update during conversations at natural milestones (phase step done,
+   blocker resolved, decision locked, test passed). Ask: "Want me to update state_of_things_log now?"
+3. UPDATE this file at the end of every conversation — append a new dated entry.
+4. NEVER delete or overwrite previous entries. Each entry is a permanent record.
+   New entries go at the BOTTOM. This file tracks the full history of state changes.
+================================================================================
+
+--- ENTRY: 2026-03-20 ---
+SESSION: BigQuery connectivity test (Phase 1b)
+
+SYSTEM STATUS
+-------------
+- Core pipeline: LIVE and stable (v4.5 Python orchestrator, v4.6 prompt files)
+- Schedule: Hourly, 6am–11pm WAT, 7 days/week via Windows Task Scheduler (CMD/CLI)
+- Last successful automation run: 2026-03-20 14:11 UTC
+  → Triage: 11 emails (10 B2B filtered, 1 WARRANTY classified)
+  → Cleanup: 7 threads cleaned
+  → Draft: 1 draft created (Kristen Phillips — refund scenario)
+- Environment: Windows CMD/CLI — NOT WSL
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Confirmed project state and memory alignment
+2. Corrected roadmap — Phase 1a WSL reference updated to Windows CMD/CLI
+3. Confirmed Phase 1a (Shopify CLI install + auth for both stores) is COMPLETE
+4. Created test_bigquery.py to test BigQuery write connectivity (Phase 1b)
+5. Confirmed BigQuery service account auth works (project: my-mcp-drive-486418)
+6. Hit billing wall — streaming inserts and DML both blocked on free tier
+
+WHERE WE ARE NOW
+----------------
+Roadmap Phase 1b is IN PROGRESS — blocked on billing.
+
+Phase 1a  ✅ Complete — Shopify CLI installed, both stores authenticated
+Phase 1b  ⏳ BLOCKED — BigQuery dataset + tables exist, service account works,
+              but GCP billing not enabled. DML inserts fail with 403 billingNotEnabled.
+              WAITING ON: June (boss) to add billing details to GCP project.
+              GCP project: my-mcp-drive-486418
+              Enable billing at: https://console.cloud.google.com/billing
+
+WHAT HAPPENS AFTER BILLING IS ENABLED
+--------------------------------------
+1. Run: python C:\Users\pc\Documents\Catalyst-Projects\test_bigquery.py
+2. Confirm: draft_log insert OK + accuracy_log insert OK
+3. Then: Claude queries both tables via BigQuery MCP to confirm read connectivity
+4. Phase 1b marked COMPLETE → proceed to Phase 2b (WISMO Python script)
+
+WHAT'S NEXT (full order)
+-------------------------
+Phase 1b  → BigQuery test (blocked on June/billing)
+Phase 2b  → WISMO Python script (Shopify API → tracking link → Temperature 0 reply)
+Phase 2c  → Integrate WISMO into draft flow
+Phase 2d  → Stuck order escalation logic
+Phase 3   → Thread-Tracer (UUID injection + BigQuery staging + reconciler)
+Phase 4   → Graduation to auto-reply (95% threshold over 100+ emails per category)
+Phase 5   → Amazon SP-API connector (also blocked — SP-API credentials, boss to confirm)
+
+KEY FILES
+---------
+Main orchestrator:     C:\Users\pc\Documents\Catalyst-Projects\catalyst_cs_automation.py
+Triage prompt:         C:\Users\pc\Documents\Catalyst-Projects\catalyst_triage.md
+Cleanup prompt:        C:\Users\pc\Documents\Catalyst-Projects\catalyst_cleanup.md
+Draft prompt:          C:\Users\pc\Documents\Catalyst-Projects\catalyst_draft.md
+Roadmap:               C:\Users\pc\Documents\Catalyst-Projects\catalyst-cs-automation-roadmap.md
+Phase 2 living doc:    C:\Users\pc\Documents\Catalyst-Projects\catalyst-cs-automation-phase2.md
+BigQuery test script:  C:\Users\pc\Documents\Catalyst-Projects\test_bigquery.py
+MCP config:            C:\Users\pc\Documents\Catalyst-Projects\.mcp.json
+Secrets:               C:\Users\pc\Documents\Catalyst-Projects\secrets.env
+
+KEY DECISIONS (locked — do not re-ask)
+---------------------------------------
+- WISMO uses dedicated labels: CATALYST_US_WISMO / CATALYST_LIFESTYLE_WISMO
+- BigQuery: Claude writes directly via MCP — no local JSON intermediary
+- Amazon connector: last phase, blocked on SP-API credentials
+- Setup/runtime environment: Windows CMD/CLI (not WSL)
+- catalyst-cs-automation-phase2.md is append-only (improvement log + LinkedIn post series)
+
+OPEN BLOCKERS
+-------------
+1. GCP billing — June to enable. Blocks Phase 1b completion and all downstream phases.
+2. Amazon SP-API credentials (US, CA, UK) — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-03-20 (Session 2) ---
+SESSION: Project orientation + BigQuery test + Task Scheduler fix
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Full project orientation — read all files, corrected memory and roadmap
+2. Corrected roadmap Phase 1a: WSL reference updated to Windows CMD/CLI
+3. Confirmed Phase 1a (Shopify CLI) is COMPLETE
+4. Created test_bigquery.py to test BigQuery write connectivity
+5. Confirmed BigQuery service account auth works (project: my-mcp-drive-486418)
+6. Hit billing wall — DML inserts blocked on GCP free tier (billingNotEnabled)
+7. Created state_of_things_log.txt as quick catch-up file for future sessions
+8. Configured Stop hook in .claude/settings.local.json to auto-stamp session end
+9. Added mid-session update prompting rule to memory and log file
+10. Diagnosed Task Scheduler issue: CatalystCS_Task_Fixed was set to IgnoreNew,
+    causing hourly runs to be skipped when a previous run was still active
+11. Fixed: changed MultipleInstancesPolicy from IgnoreNew → Parallel in XML,
+    reimported task via schtasks (admin CMD). Task successfully recreated.
+
+NOTE ON STOP HOOK: Hook fires on every Claude response stop, not just conversation end.
+This causes duplicate SESSION ENDED markers. Need to reconsider hook design —
+possibly switch to a UserPromptSubmit hook or manual-only updates.
+
+WHERE WE ARE NOW
+----------------
+Phase 1a  ✅ Complete
+Phase 1b  ⏳ BLOCKED — BigQuery tables exist, service account works, billing not enabled
+              WAITING ON: June (boss) to add billing to GCP project my-mcp-drive-486418
+Task Scheduler ✅ Fixed — now runs in Parallel mode, no more skipped hourly runs
+
+WHAT'S NEXT
+-----------
+1. June enables GCP billing → run test_bigquery.py → confirm Phase 1b complete
+2. Phase 2b — WISMO Python script
+3. Phase 3 — Thread-Tracer accuracy counter
+4. Fix Stop hook to avoid duplicate SESSION ENDED markers
+
+OPEN BLOCKERS
+-------------
+1. GCP billing — June to enable. Blocks Phase 1b and all downstream phases.
+2. Amazon SP-API credentials (US, CA, UK) — boss to confirm. Blocks Phase 5.
+3. Stop hook fires too frequently — needs redesign to avoid log noise.
+
+================================================================================
+
+--- ENTRY: 2026-03-20 (Session 3) ---
+SESSION: Draft prompt update + session close
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Updated catalyst_draft.md from v4.2 → v4.3
+2. Added writing style rules to Step 6 (Generate Draft Email):
+   - No em dashes anywhere in drafts
+   - Full banned AI word/phrase list across 5 categories:
+     chatbot pleasantries, AI power words, navigational filler,
+     adjective overload, helpful assistant vibe, generic closer words
+3. No other changes — waiting on June for GCP billing
+
+WHERE WE ARE NOW
+----------------
+Phase 1a  ✅ Complete
+Phase 1b  ⏳ BLOCKED — waiting on June to enable GCP billing on project my-mcp-drive-486418
+Task Scheduler ✅ Fixed (Parallel mode, no skipped runs)
+Draft prompt ✅ Updated to v4.3 (em dash ban + full AI word ban)
+
+WHAT'S NEXT
+-----------
+1. June enables GCP billing → run: python C:\Users\pc\Documents\Catalyst-Projects\test_bigquery.py
+2. Share output → confirm Phase 1b complete
+3. Proceed to Phase 2b — WISMO Python script
+
+OPEN BLOCKERS
+-------------
+1. BigQuery IAM — June to grant BigQuery Job User + Data Editor roles on cs-mcp-gateway project.
+   (GCP project changed: no longer my-mcp-drive-486418 — now using existing cs-mcp-gateway)
+   Service account: C:\Users\pc\gdrive-mcp-server\credentials\bigquery-service-account.json
+2. Amazon SP-API credentials (US, CA, UK) — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-03-24 (Session 4) ---
+SESSION: June's ops call directives + revised project roadmap
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Ran full automation cycle — clean (Triage ✅ Cleanup ✅ Draft ✅)
+2. Fixed pre-filter timeout: raised 120s → 180s in catalyst_cs_automation.py
+3. Fixed Carl Ball false positive: Rule 3 now strips quoted lines (>) before keyword scan
+4. Reviewed June's Monday ops call recommendations — confirmed AI interpretation was accurate
+   with one key nuance: temperature zero = factual core only; writing style CAN still adapt
+5. KB Temperature Zero exercise: WAITING on IAM permissions before starting
+
+WHERE WE ARE NOW
+----------------
+Phase 1a  ✅ Complete
+Phase 1b  ⏳ BLOCKED — waiting on June to grant IAM roles on cs-mcp-gateway
+           (BigQuery Job User + Data Editor needed on top of Service Usage Consumer)
+Automation ✅ Healthy — pre-filter timeout + Carl Ball false positive fixed
+Draft prompt ✅ v4.3 (em dash ban + full AI word ban)
+
+REVISED PROJECT ROADMAP (post June ops call)
+--------------------------------------------
+IMMEDIATE (unblocking dependency):
+  A. IAM permissions confirmed → update test_bigquery.py project ID → run test → Phase 1b done
+  B. KB Temperature Zero exercise:
+     - Pull each KB doc from GDrive (Customer_Support_Claude_Skills folder)
+     - Use Claude to rewrite answers using highest-probability word choices
+     - Store rewritten versions back as canonical in GDrive
+     - Update catalyst_draft.md Step 6: retrieve KB answer as factual base, adjust style only
+
+NEXT (after KB hardening):
+  C. Phase 2b — WISMO Python script
+  D. Intent layer / vector embedding architecture (June's Phase 2 — explicit "next after" KB hardening)
+  E. Phase 3 — Thread-Tracer automation threshold tracking (BigQuery logging — already planned)
+
+PARALLEL (user handling separately):
+  F. FAQ extraction from Shopify app → update support page (June's Phase 4)
+
+FUTURE:
+  G. Phase 5 — Amazon SP-API connector (blocked on credentials)
+
+OPEN BLOCKERS
+-------------
+1. BigQuery IAM — June to grant BigQuery Job User + Data Editor on cs-mcp-gateway. Blocks Phase 1b.
+2. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-03-25 (Session 5) ---
+SESSION: Phase 1b complete + Task Scheduler fixed
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Task Scheduler root cause found and fixed:
+   - Command was `python` (not found in non-interactive PATH)
+   - Fixed to `C:\Python314\python.exe` — re-registered task as admin
+   - Confirmed: automatic run fired at 07:04 UTC without manual trigger
+2. Phase 1b — BigQuery connectivity CONFIRMED:
+   - Project: cs-mcp-gateway (#949282056449)
+   - Dataset: catalyst_cs_accuracy (created fresh)
+   - Tables: draft_log + accuracy_log (created, inserts confirmed, queried back clean)
+   - Service account: catalyst-bigquery-writer@my-mcp-drive-486418.iam.gserviceaccount.com
+   - IAM granted via GCP Console (BigQuery Data Editor + Job User at project level)
+
+WHERE WE ARE NOW
+----------------
+Phase 1a  ✅ Complete
+Phase 1b  ✅ Complete — BigQuery connected on cs-mcp-gateway
+Automation ✅ Healthy — Task Scheduler auto-firing confirmed
+Draft prompt ✅ v4.3
+
+WHAT'S NEXT (in order)
+-----------------------
+1. KB Temperature Zero exercise (pull GDrive KB docs, rewrite, store back, update draft prompt)
+2. Phase 2b — WISMO Python script
+3. Intent layer / vector embedding architecture (June's direction — after KB hardening)
+4. Wire BigQuery logging into live draft runs (automation threshold tracking)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-03-25 (Session 6) ---
+SESSION: KB reorganization + Temperature Zero audit (warranty + OOS + address)
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. KB folder reorganized — converted 3 old-style guide files to CANONICAL skill format:
+   - Deleted: Claude_KB\Address Verification & Order Holds Guide.md
+   - Deleted: Claude_KB\Out-of-Stock Order Notification Guide.md
+   - Deleted: Claude_KB\Warranty Claims Guide.md
+2. Created 4 new CANONICAL skill files (Skills/ subfolder):
+   - CANONICAL_skill_address-verification-us.md (5 functions, US English, Ms###### format)
+   - CANONICAL_skill_address-verification-intl.md (5 functions, Intl English, ###### format)
+   - CANONICAL_skill_oos-notification-us.md (5 functions, US English)
+   - CANONICAL_skill_oos-notification-intl.md (5 functions, Intl English)
+3. Updated 2 existing warranty skill files to v1.1 with Temperature Zero locked phrases:
+   - CANONICAL_skill_warranty-claim-us.md → v1.1
+   - CANONICAL_skill_warranty-claim-intl.md → v1.1
+   All 7 functions in both files now have Approved Language + Forbidden blocks
+4. Updated catalyst_draft.md Step 4 routing:
+   - Exact CANONICAL filename mapping for all labels (US + Intl + GENERAL_*)
+   - GDrive folder updated to "Skills" inside "Claude_KB"
+   - Local fallback updated to Claude_KB\Skills\
+5. User action pending: Upload 6 files to GDrive Skills folder
+   (4 new + 2 updated warranty files; delete old GDrive warranty versions first)
+
+WHERE WE ARE NOW
+----------------
+Phase 1a  ✅ Complete
+Phase 1b  ✅ Complete — BigQuery connected on cs-mcp-gateway
+Automation ✅ Healthy — Task Scheduler auto-firing confirmed
+Draft prompt ✅ v4.3 (Step 4 routing updated to CANONICAL filenames)
+KB Skills  ✅ address-verification (US+intl), oos-notification (US+intl), warranty (US+intl v1.1)
+KB Skills  ⏳ Temperature Zero audit PENDING on:
+              order-shipping (US+intl), return-processing (US+intl),
+              order-modification (US+intl), product-support files, chargeback-disputes, return-tracking
+
+WHAT'S NEXT (in order)
+-----------------------
+1. User: Upload 6 KB files to GDrive Skills folder (delete old warranty files first)
+2. Temperature Zero audit — remaining skill files (see list above)
+3. Phase 2b — WISMO Python script
+4. Intent layer / vector embedding architecture (June's direction — after KB hardening)
+5. Wire BigQuery logging into live draft runs
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-03-26 (Session 7) ---
+SESSION: Phase 2b/2c/2d complete (WISMO hardened flows) + Temperature Zero audit complete
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Built Phase 2b — WISMO hardened flows runner:
+   - Created catalyst_hardened_flows.md (v1.1) — deterministic WISMO prompt
+   - Templates: A (in transit), Variant 1 (processing), Variant 2 (delayed — manual),
+     Variant 3 (delivered not received), Variant 4 (lost in transit — manual)
+   - Sign-off: Theresa / CatalystCase Support
+   - Brand voice applied: em dashes removed, banned words removed
+   - Routes: A (tracking present, not delivered), A2 (delivered), B (unfulfilled 3+ days
+     → ESCALATION_NEEDED), C (unfulfilled ≤3 days)
+2. Updated catalyst_cs_automation.py v4.4 → v4.5:
+   - Added hardened step (Run 3) between Cleanup and Draft
+   - Added HARDENED_FILE, HARDENED_TIMEOUT, MCP set for hardened
+   - Added --hardened-only CLI flag
+3. Phase 2c confirmed: draft run's -label:REVIEW_DRAFT filter automatically skips
+   hardened-processed emails — no code changes needed
+4. Phase 2d tested and confirmed:
+   - Order Ms150467 (ON_HOLD, 5 days, no tracking) → ESCALATION_NEEDED applied, no draft created
+   - Route B fires correctly
+5. Temperature Zero audit confirmed complete (user confirmed all remaining KB skill files done):
+   - order-shipping (US+intl), return-processing (US+intl), order-modification (US+intl),
+     product-support files, chargeback-disputes, return-tracking
+
+WHERE WE ARE NOW
+----------------
+Phase 1a  ✅ Complete
+Phase 1b  ✅ Complete — BigQuery connected on cs-mcp-gateway
+Phase 2b  ✅ Complete — WISMO hardened flows runner live
+Phase 2c  ✅ Complete — Draft integration confirmed (REVIEW_DRAFT filter handles it)
+Phase 2d  ✅ Complete — Stuck order escalation tested and confirmed
+Automation ✅ Healthy — Task Scheduler auto-firing, full 4-step pipeline live
+Draft prompt ✅ v4.3
+KB Skills  ✅ Temperature Zero audit COMPLETE — all CANONICAL skill files done
+
+WHAT'S NEXT (in order)
+-----------------------
+1. Phase 3 — Thread-Tracer (UUID injection + BigQuery logging + accuracy reconciler)
+2. Intent layer / vector embedding architecture (June's direction)
+3. Wire BigQuery logging into live draft runs (automation threshold tracking)
+4. Phase 5 — Amazon SP-API connector (blocked on credentials)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-03-27 (Session 8) ---
+SESSION: Phase 3a/3b complete — Thread-Tracer BQ staging live + orchestrator v4.6
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Orchestrator upgraded v4.5 → v4.6
+2. Phase 3a implemented — BQ staging in draft agent:
+   - Draft agent writes one JSON line per draft to bq_staging.jsonl via local-files MCP
+   - flush_bq_staging() added to orchestrator — runs after draft step each cycle
+   - Reads bq_staging.jsonl, inserts all rows to BigQuery draft_log via Python client, clears file
+3. Phase 3b design confirmed — staging file is the correct approach:
+   - BigQuery MCP is read-only (confirmed) — direct MCP write is not possible
+   - Roadmap 3b note updated to reflect actual implementation
+4. BigQuery MCP project ID corrected in .mcp.json: my-mcp-drive-486418 → cs-mcp-gateway
+5. bigquery MCP added to draft MCP set (for future read queries)
+6. Full cycle run confirmed live on 2026-03-27 19:24-19:51 UTC:
+   - 5 drafts created, 5 BQ rows staged and flushed — 0 failed
+   - All 4 pipeline steps completed successfully
+
+WHERE WE ARE NOW
+----------------
+Phase 1a  COMPLETE
+Phase 1b  COMPLETE — BigQuery connected on cs-mcp-gateway
+Phase 2b  COMPLETE — WISMO hardened flows live
+Phase 2c  COMPLETE — Draft integration confirmed
+Phase 2d  COMPLETE — Stuck order escalation confirmed
+Phase 3a  COMPLETE — Draft staging to bq_staging.jsonl + flush to BigQuery live
+Phase 3b  COMPLETE — Python flush via service account confirmed (BigQuery MCP = read-only)
+Phase 3c  NOT STARTED — Python Reconciler (30-min scheduled task)
+Phase 3d  NOT STARTED — Accuracy Dashboard
+Automation HEALTHY — v4.6, Task Scheduler auto-firing, full 4-step pipeline
+KB Skills  COMPLETE — Temperature Zero audit done
+
+WHAT'S NEXT (in order)
+-----------------------
+1. Phase 3c — Python Reconciler:
+   - Separate scheduled task, runs every 30 min
+   - Pulls Gmail Sent messages (last 30-60 min)
+   - Joins message_id + thread_id against BigQuery draft_log WHERE status = PENDING
+   - Computes Levenshtein distance, writes to accuracy_log, updates draft_log to RECONCILED
+   - Ages out PENDING records older than 14 days to ABANDONED
+2. Phase 3d — Accuracy Dashboard (BigQuery query, weekly scheduled report)
+3. Intent layer / vector embedding architecture (June's direction)
+4. Phase 5 — Amazon SP-API connector (blocked on credentials)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-03-28 (Session 9 — reconstructed, laptop cut off before log update) ---
+SESSION: Phase 3c complete — Python Reconciler built + integrated into orchestrator
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. catalyst_reconciler.py v1.0 written in full (Phase 3c):
+   - Step 1: Fetches Gmail Sent messages (last 60 min) via Claude CLI + Gmail MCP
+   - Step 2: Queries BigQuery draft_log for all PENDING records
+   - Step 3: Matches via thread_id (PRIMARY key — Gmail assigns a NEW message_id when a
+     draft is sent, so draft message_id does NOT match sent message_id; thread_id is stable)
+   - Step 4: Computes Levenshtein distance → accuracy_score → result label
+             (PERFECT / MINOR_EDIT / MAJOR_EDIT / REWRITE)
+   - Step 5: Writes to accuracy_log, updates draft_log status → RECONCILED
+   - Step 6: Ages out PENDING records older than 14 days → ABANDONED
+   - ensure_accuracy_log_schema() handles accuracy_log schema migration at runtime
+   - semantic_match always FALSE for now — embedding check deferred to Phase 4
+2. alter_draft_log.py written and run — one-time schema migration adding
+   thread_id, message_id, status columns to draft_log table
+3. catalyst_cs_automation.py updated:
+   - Imports catalyst_reconciler as _reconciler
+   - Added Run 5: calls _reconciler.main() after every draft + BQ flush cycle
+   - DESIGN CHANGE from roadmap: reconciler runs as Run 5 inside the hourly pipeline
+     (NOT a separate 30-min Task Scheduler task — simpler, one fewer scheduled task)
+4. Session ended abruptly (laptop off) — log not written at the time
+
+WHERE WE ARE NOW
+----------------
+Phase 1a  COMPLETE
+Phase 1b  COMPLETE — BigQuery connected on cs-mcp-gateway
+Phase 2b  COMPLETE — WISMO hardened flows live
+Phase 2c  COMPLETE — Draft integration confirmed
+Phase 2d  COMPLETE — Stuck order escalation confirmed
+Phase 3a  COMPLETE — Draft staging to bq_staging.jsonl + flush to BigQuery live
+Phase 3b  COMPLETE — Python flush via service account confirmed
+Phase 3c  COMPLETE — Reconciler built + integrated as Run 5 in hourly pipeline
+Phase 3d  NOT STARTED — Accuracy Dashboard
+Automation HEALTHY — v4.6, full 5-step pipeline (Triage/Cleanup/Hardened/Draft/Reconciler)
+KB Skills  COMPLETE — Temperature Zero audit done
+
+KEY DESIGN CHANGE (lock this)
+------------------------------
+Reconciler is Run 5 of the hourly pipeline — NOT a separate 30-min scheduled task.
+Roadmap 3c description is outdated on this point.
+
+WHAT'S NEXT (in order)
+-----------------------
+1. Phase 3d — Accuracy Dashboard (BigQuery query, weekly scheduled report)
+2. Intent layer / vector embedding architecture (June's direction)
+3. Phase 5 — Amazon SP-API connector (blocked on credentials)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-03-28 (Session 10) ---
+SESSION: Phase 3d complete — Accuracy Dashboard built + integrated into orchestrator v4.7
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Caught up from lost session (laptop off) — reconstructed Session 9 log entry
+2. Built catalyst_accuracy_dashboard.py v1.0 (Phase 3d):
+   - 4 BigQuery queries: pipeline health, accuracy by category, last 7 days, graduation candidates
+   - accuracy_log queries join draft_log on draft_id to get email_category (not stored in accuracy_log)
+   - Writes dated report: accuracy_report_YYYYMMDD.txt + accuracy_report_latest.txt
+   - Runnable manually at any time
+3. Fixed query bug on first test run: email_category not in accuracy_log — fixed all 3
+   category queries to JOIN draft_log on draft_id
+4. Tested successfully — report generated clean, data as expected
+5. Integrated into orchestrator as Run 6:
+   - Fires after reconciler (Run 5), Mondays only (WAT), on every draft cycle
+   - is_monday() helper checks WAT day (UTC+1), consistent with business hours logic
+   - Imported as _dashboard with graceful skip if file missing
+   - Orchestrator bumped v4.6 → v4.7
+6. Import smoke test passed: python -c "import catalyst_cs_automation; print('Import OK')" → OK
+7. Roadmap 3d + 4d updated: "weekly scheduled task" language corrected to
+   "triggered by orchestrator on Mondays — no separate scheduled task"
+
+WHERE WE ARE NOW
+----------------
+Phase 1a  COMPLETE
+Phase 1b  COMPLETE — BigQuery connected on cs-mcp-gateway
+Phase 2b  COMPLETE — WISMO hardened flows live
+Phase 2c  COMPLETE — Draft integration confirmed
+Phase 2d  COMPLETE — Stuck order escalation confirmed
+Phase 3a  COMPLETE — Draft staging + BQ flush live
+Phase 3b  COMPLETE — Python flush via service account confirmed
+Phase 3c  COMPLETE — Reconciler as Run 5 in hourly pipeline
+Phase 3d  COMPLETE — Accuracy Dashboard as Run 6 (Mondays only)
+Phase 4   WAITING — needs data accumulation (≥100 emails per category at ≥95% clean)
+Phase 5   BLOCKED — Amazon SP-API credentials
+Automation HEALTHY — v4.7, full pipeline: Triage/Cleanup/Hardened/Draft/Reconciler/Dashboard
+
+WHAT'S NEXT (in order)
+-----------------------
+1. Intent layer / vector embedding architecture (June's direction)
+2. Phase 4 — Graduation to auto-reply (when data threshold is met)
+3. Phase 5 — Amazon SP-API connector (blocked on credentials)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-03-28 (Session 11) ---
+SESSION: Full system consistency audit — 6 discrepancies found and fixed
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Cross-checked roadmap.md, phase2.md, state_of_things_log, all prompt files,
+   orchestrator, reconciler, and dashboard for consistency
+2. Fixed roadmap.md (2 issues):
+   - Header status: "Planning — Phase 1 ready to start" → "Phase 3 complete — accumulating accuracy data for Phase 4 graduation"
+   - Summary Table: Phase 3 "🔄 In progress" → "✅ Complete (3a/3b/3c/3d)"
+3. Fixed phase2.md (4 issues):
+   - Version History: added v4.8 (BQ staging + reconciler) and v4.9 (Accuracy Dashboard);
+     clarified existing v4.7 entry as KB/prompt-layer change only
+   - Production Performance table: "Current (v4.5)" → "Current (v4.9 system / v4.7 orchestrator)"
+   - "In Progress / Upcoming": updated to March 28, all Phase 2/3 items ticked complete
+   - Phase 3 Roadmap section: UUID injection removed, thread_id approach documented,
+     all statuses updated, Run 5/6 noted as in-pipeline (no separate scheduled tasks)
+4. Fixed prompt file pipeline step counts (descriptor only — no version bumps):
+   - catalyst_triage.md: Step 1 of 2 → Step 1 of 4
+   - catalyst_cleanup.md: Step 2 of 3 → Step 2 of 4
+   - catalyst_draft.md: Step 3 of 3 (runs after cleanup) → Step 4 of 4 (runs after hardened flows)
+5. Fixed stale WISMO note in catalyst_draft.md Step 4 (both US + Intl entries):
+   "Phase 2 will replace with Python tracking script" →
+   "Handled by Run 3 — Hardened Flows. Fallback if hardened flows skipped."
+6. Confirmed consistent (no changes needed): BQ project/dataset/table/credentials refs,
+   pre-filter rules vs. triage prompt, hardened_flows.md step count, bq_staging path
+
+NOTE: Version numbers in prompt files are NOT bumped for descriptor-only edits.
+Current known prompt file versions:
+  catalyst_triage.md         — v4.6 (WISMO Rule 3.5 added, Session 7)
+  catalyst_cleanup.md        — v2.0 (no tracked changes since Phase 2 architecture)
+  catalyst_hardened_flows.md — v1.1 (Session 7)
+  catalyst_draft.md          — v4.3 (em dash + AI word ban, Session 3);
+                                bq_staging Step 7 added Session 8 — not version-bumped
+
+WHERE WE ARE NOW
+----------------
+Phase 1a–1b  COMPLETE
+Phase 2b–2d  COMPLETE
+Phase 3a–3d  COMPLETE
+Phase 4      WAITING — needs ≥100 emails per category at ≥95% clean
+Phase 5      BLOCKED — Amazon SP-API credentials
+Automation   HEALTHY — v4.7 orchestrator, 6-step pipeline
+All docs     IN SYNC — roadmap, phase2, state log, all prompt files consistent
+
+WHAT'S NEXT (in order)
+-----------------------
+1. Intent layer / vector embedding architecture (June's direction)
+2. Phase 4 — Graduation to auto-reply (when data threshold met)
+3. Phase 5 — Amazon SP-API connector (blocked on credentials)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-03-28 (Session 12) ---
+SESSION: Phase 3.5 design approved — Intent Layer + Semantic KB Retrieval plan locked
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Reviewed June's intent layer / vector embedding direction (from Monday ops call, Session 4)
+2. Designed full architecture — pressure-tested against stack and scale
+3. Plan logged in roadmap.md (Phase 3.5 full spec) and phase2.md (In Progress section)
+
+PHASE 3.5 — INTENT LAYER PLAN (locked)
+----------------------------------------
+Problem: current pipeline does category label → fixed KB file → draft.
+         Produces correct but generic, non-context-aware responses.
+Goal:    Understand what the customer actually wants (not just category),
+         retrieve the most semantically relevant KB content, and feed
+         enriched context into draft generation.
+
+Architecture:
+  Current:   Triage → [Category] → Draft (fixed KB file) → Human review
+  Phase 3.5: Triage → [Category] → Semantic Retriever → Draft (top-3 KB + intent + sentiment) → Human review
+
+Key decisions locked:
+  - Embedding model: sentence-transformers/all-MiniLM-L6-v2 (local, free, no API key)
+  - embedding_model field stored in kb_embeddings table — never change without full re-embed
+  - Category system stays — semantic retrieval works WITHIN category filter
+  - No new database — kb_embeddings in existing catalyst_cs_accuracy dataset
+  - Hybrid fallback: if retrieval fails → existing label→filename continues
+
+Build order (3 stages, each testable):
+  Stage 1 (3.5a): Intent + sentiment extraction
+    - catalyst_draft.md Step 2.5 — Claude outputs structured JSON per email
+    - Fields: primary_intent, secondary_intent, sentiment, escalation_risk
+  Stage 2a (3.5b): KB Embedding Store
+    - catalyst_kb_embedder.py — chunks CANONICAL skill files, embeds, stores to BQ kb_embeddings
+  Stage 2b (3.5c): Semantic Retriever
+    - catalyst_semantic_retriever.py — Run 3.5 in orchestrator (before draft)
+    - Embeds emails, queries kb_embeddings top-3, writes to intent_context.jsonl
+  Stage 3 (3.5d): Prompt upgrade
+    - catalyst_draft.md Steps 4 + 6 — consume intent_context.jsonl
+    - Claude gets: email + intent/sentiment + top-3 KB chunks + Shopify data
+
+New files to build:
+  catalyst_kb_embedder.py
+  catalyst_semantic_retriever.py
+  intent_context.jsonl (staging file)
+
+Files to modify:
+  catalyst_draft.md (Steps 2.5, 4, 6)
+  catalyst_cs_automation.py (Run 3.5, v4.7 → v4.8)
+
+Impact on Phase 4:
+  Better semantic accuracy → fewer human edits → lower edit_distance in Thread-Tracer
+  → faster accumulation of PERFECT/MINOR_EDIT scores → earlier graduation to auto-send
+
+WHERE WE ARE NOW
+----------------
+Phase 1a–1b    COMPLETE
+Phase 2b–2d    COMPLETE
+Phase 3a–3d    COMPLETE
+Phase 3.5      IN PROGRESS — design approved, building Stage 1 next
+Phase 4        WAITING — accelerated by Phase 3.5 accuracy improvements
+Phase 5        BLOCKED — Amazon SP-API credentials
+Automation     HEALTHY — v4.7 orchestrator, 6-step pipeline
+
+WHAT'S NEXT (in order)
+-----------------------
+1. Phase 3.5 Stage 1 — intent + sentiment extraction (catalyst_draft.md Step 2.5)
+2. Phase 3.5 Stage 2 — KB embedder + semantic retriever
+3. Phase 3.5 Stage 3 — prompt upgrade + test against 20 real emails
+4. Phase 4 — graduation (when data threshold met, accelerated by 3.5)
+5. Phase 5 — Amazon SP-API (blocked on credentials)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+
+================================================================================
