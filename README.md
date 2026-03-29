@@ -1,6 +1,6 @@
 # Catalyst CS Automation
 
-AI-powered customer service pipeline for Catalyst Products (catalystcase.com + catalystlifestyle.com).
+AI-powered customer service pipeline for Catalyst Products a premium e-commerce company.
 Automates email triage, draft generation, accuracy tracking, and graduated auto-send.
 
 ---
