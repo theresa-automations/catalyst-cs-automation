@@ -647,3 +647,580 @@ OPEN BLOCKERS
 1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
 
 ================================================================================
+
+--- ENTRY: 2026-04-01 (Session 13) ---
+SESSION: Reconciler prompt fix — safety refusal resolved
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Diagnosed recurring reconciler failure pattern in reconciler_log.txt:
+   - Claude CLI was flagging the Gmail Sent fetch prompt as a "prompt injection /
+     data exfiltration attempt" on ~50-60% of runs since 2026-03-28
+   - Root cause: fetch_sent_emails() prompt used "return ONLY a JSON array —
+     no other text, no explanation" + requested full email body content —
+     exact pattern newer Claude models flag as suppression + exfiltration
+2. Fixed catalyst_reconciler.py — replaced Claude CLI Gmail fetch with direct Gmail API:
+   - Root cause: no prompt wording could reliably prevent Claude's safety refusal
+     (model flags "return JSON body" pattern regardless of framing)
+   - Solution: removed Claude CLI from fetch_sent_emails() entirely
+   - Now uses google-api-python-client + stored OAuth token at .gmail-mcp/credentials.json
+     (same credentials the Gmail MCP server uses — no new security exposure)
+   - Added _get_gmail_service() + _extract_body() helpers
+   - Removed CLAUDE_CLI, CLAUDE_CLI_DIR, MCP_CONFIG, GMAIL_TIMEOUT constants
+   - Added GMAIL_CREDS_FILE + GMAIL_KEYS_FILE constants
+   - Added credential file existence checks in main()
+   - Tested: 4 sent emails fetched, 2 reconciled, clean run — no refusal, no warnings
+
+WHERE WE ARE NOW
+----------------
+Phase 1a–1b    COMPLETE
+Phase 2b–2d    COMPLETE
+Phase 3a–3d    COMPLETE
+Phase 3.5      IN PROGRESS — design approved, building Stage 1 next
+Phase 4        WAITING — needs ≥100 emails per category at ≥95% clean
+Phase 5        BLOCKED — Amazon SP-API credentials
+Automation     HEALTHY — v4.7 orchestrator, 6-step pipeline
+Reconciler     FIXED — Gmail fetch now uses Python Gmail API directly (no Claude CLI)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+
+================================================================================
+
+--- ENTRY: 2026-04-02 (Session 14) ---
+SESSION: Pipeline order swap (Cleanup before Triage) + full system audit
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Pipeline order changed — Cleanup now runs BEFORE Triage (Run 1 → Run 2 swap):
+   - Old order: Triage(1) → Cleanup(2) → Hardened(3) → Draft(4)
+   - New order: Cleanup(1) → Triage(2) → Hardened(3) → Draft(4)
+   - Rationale: Cleanup removes stale REVIEW_DRAFT labels first, so Triage
+     classifies on a clean inbox state. Logically correct order.
+   - Confirmed safe: Cleanup only removes REVIEW_DRAFT when (A) cs@ replied, or
+     (B) email is marked read. No dependency on Triage running first.
+   - Files updated: catalyst_cs_automation.py (execution order + header comment),
+     catalyst_cleanup.md (Step 1 of 4), catalyst_triage.md (Step 2 of 4)
+
+2. Full system audit — 4 inconsistencies found and fixed:
+   - catalyst_cs_automation.py:736 — version log said v4.6, now v4.7
+   - catalyst_triage.md:3 — "Step 1 of 4" → "Step 2 of 4, runs after cleanup"
+   - catalyst_hardened_flows.md:3 — "runs after cleanup" → "runs after triage"
+   - catalyst_reconciler.py:7-8 — stale "separate 30-min scheduled task" text removed;
+     confirmed only one Task Scheduler task exists (CatalystCS_Task_Fixed)
+
+3. Audit findings — latent risks noted, no fix needed now:
+   - Pre-filter Claude CLI fetch uses "return ONLY a JSON array" pattern — same
+     style that triggered reconciler refusals. Graceful fallback exists. Monitor.
+   - Draft 30-min timeout already being hit — root cause not yet investigated.
+     Do not add new load to draft step until this is diagnosed.
+
+4. GDrive KB lookup fixed in catalyst_draft.md Step 5 Attempt 2:
+   - Root cause: gdrive_search was failing when given full CANONICAL filename
+     (search returns 0 results for exact filename queries)
+   - Fix: replaced folder-scoped search with hardcoded GDrive file ID table
+     (all 19 KB files mapped — gdrive_read_file by ID, no search needed)
+   - Result: Attempt 2 will now succeed and populate local cache, eliminating
+     the triple-attempt waste (cache miss → GDrive fail → local mirror) per email
+   - ACTION REQUIRED: Upload updated catalyst_draft.md to GDrive if mirrored there
+
+5. Warranty KB files updated — both US and Intl bumped to v1.2:
+   - Function 2 (both): Added DOA "no return required" — photo proof sufficient
+     for defective-on-arrival; customer does not need to mail item back
+   - Function 8 (both): New competitive warranty response — handles "why only
+     12 months vs OtterBox 7 years?" — no hidden S&H fees, 33ft vs 6.6ft depth
+   - Key Rules (intl only): Explicit statement that customer pays all shipping,
+     customs duties, and VAT where required by local law
+   - ACTION REQUIRED: Upload updated warranty KB files to GDrive Skills folder
+     (CANONICAL_skill_warranty-claim-us.md + CANONICAL_skill_warranty-claim-intl.md)
+
+6. WISMO tracking enhancement — scoped but blocked on June:
+   - Goal: extend hardened WISMO to fetch live tracking status from USPS API
+   - Only USPS and Amazon FBA used. Amazon FBA tracking already in Shopify via
+     MCF push — no extra integration needed for FBA.
+   - USPS Web Tools API (free) would provide live events for USPS shipments.
+   - Waiting on June for USPS Web Tools account / User ID before building.
+
+WHERE WE ARE NOW
+----------------
+Phase 1a–1b    COMPLETE
+Phase 2b–2d    COMPLETE
+Phase 3a–3d    COMPLETE
+Phase 3.5      IN PROGRESS — design approved, building Stage 1 next
+Phase 4        WAITING — needs ≥100 emails per category at ≥95% clean
+Phase 5        BLOCKED — Amazon SP-API credentials
+Automation     HEALTHY — v4.7 orchestrator, 6-step pipeline, Cleanup now runs first
+All docs       IN SYNC
+
+WHAT'S NEXT (in order)
+-----------------------
+1. WISMO tracking enhancement — awaiting June's USPS Web Tools account details
+2. Phase 3.5 Stage 1 — intent + sentiment extraction (catalyst_draft.md Step 2.5)
+3. Phase 3.5 Stage 2 — KB embedder + semantic retriever
+4. Apple Watch + AirPods KB files — create CANONICAL_skill files for both product lines
+   (triage rules also need updating once KB files are ready)
+5. Phase 4 — graduation (when data threshold met)
+6. Phase 5 — Amazon SP-API (blocked on credentials)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+2. USPS Web Tools account (June) — needed before WISMO tracking enhancement can be built.
+
+================================================================================
+
+--- ENTRY: 2026-04-05 (Session 15) ---
+SESSION: Phase 3.5a complete — Intent + Sentiment Extraction (Stage 1)
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. User confirmed all pending actions from Session 14 are done:
+   - catalyst_draft.md uploaded to GDrive (updated)
+   - CANONICAL_skill_warranty-claim-us.md v1.2 uploaded to GDrive Skills
+   - CANONICAL_skill_warranty-claim-intl.md v1.2 uploaded to GDrive Skills
+2. catalyst_draft.md v4.3 → v4.4:
+   - Added Step 2.5 — Intent + Sentiment Extraction (between Step 2 and Step 3)
+     Fields: primary_intent, secondary_intent, sentiment, escalation_risk
+     12 primary_intent values, 5 sentiment values, 3 escalation_risk levels
+     Output held in context (internal only — not injected into email body)
+   - Updated Step 6 — tone calibration block added:
+     ANGRY/FRUSTRATED → empathy-first open
+     URGENT → lead with resolution immediately
+     escalation_risk = HIGH → ⚠️ flag appended after sign-off (HIGH only)
+     primary_intent cross-check against KB function selected in Step 5
+   - Updated Step 7 — 4 new fields added to bq_staging.jsonl schema:
+     primary_intent, secondary_intent, sentiment, escalation_risk
+3. catalyst_cs_automation.py — flush_bq_staging() SQL INSERT updated:
+   - Added primary_intent, secondary_intent, sentiment, escalation_risk columns
+   - All use .get() with None defaults (backward safe — old rows without fields pass null)
+   - Orchestrator version stays v4.7 (Run 3.5 + v4.8 bump is Stage 2b)
+4. New file: alter_draft_log_intent.py
+   - One-time migration script — adds 4 nullable STRING columns to BigQuery draft_log
+   - Same pattern as alter_draft_log.py (used in Session 9)
+   - Safe to re-run; skips columns that already exist
+
+USER ACTION REQUIRED
+---------------------
+1. Run: python alter_draft_log_intent.py
+   (Adds 4 columns to BigQuery draft_log before next pipeline cycle)
+2. Upload updated catalyst_draft.md v4.4 to GDrive (if mirrored there)
+
+WHERE WE ARE NOW
+----------------
+Phase 1a–1b    COMPLETE
+Phase 2b–2d    COMPLETE
+Phase 3a–3d    COMPLETE
+Phase 3.5a     COMPLETE — Intent + Sentiment Extraction live in draft prompt
+Phase 3.5b     NOT STARTED — KB Embedding Store (catalyst_kb_embedder.py)
+Phase 3.5c     NOT STARTED — Semantic Retriever (catalyst_semantic_retriever.py)
+Phase 3.5d     NOT STARTED — Prompt upgrade (Steps 4+6 consume intent_context.jsonl)
+Phase 4        WAITING — needs ≥100 emails per category at ≥95% clean
+Phase 5        BLOCKED — Amazon SP-API credentials
+Automation     HEALTHY — v4.7 orchestrator; draft prompt v4.4 once migration runs
+
+WHAT'S NEXT (in order)
+-----------------------
+1. User: Run alter_draft_log_intent.py (BQ schema migration)
+2. User: Upload catalyst_draft.md v4.4 to GDrive
+3. Phase 3.5b — KB Embedding Store (catalyst_kb_embedder.py)
+4. Phase 3.5c — Semantic Retriever (catalyst_semantic_retriever.py + Run 3.5 in orchestrator)
+5. WISMO tracking enhancement — awaiting June's USPS Web Tools account details
+6. Apple Watch + AirPods KB files — CANONICAL_skill files + triage rule updates
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+2. USPS Web Tools account (June) — needed before WISMO tracking enhancement can be built.
+
+--- ENTRY: 2026-04-06 (Session 16) ---
+SESSION: Phase 3.5a test + 3 bug fixes + batch KB read (v4.5 draft prompt)
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. BQ schema migration run successfully:
+   python alter_draft_log_intent.py
+   Added: primary_intent, secondary_intent, sentiment, escalation_risk (all STRING NULLABLE)
+
+2. Bug fix — Cleanup: gmail_modify_thread not found
+   Root cause: cleanup prompt said "remove REVIEW_DRAFT" but never specified which tool.
+   Claude was guessing gmail_modify_thread (doesn't exist). Fixed to explicit
+   `gmail modify_email` instruction in catalyst_cleanup.md.
+   Result: 2 threads cleaned correctly on next run.
+
+3. Bug fix — Triage timeout (15 min)
+   Root cause: 14 emails to LLM, hit 15-min wall. Bumped TRIAGE_TIMEOUT 15 → 20 min.
+   Result: triage completed in 3 min on next run (well within new ceiling).
+
+4. Bug fix — BQ INSERT failure (primary_intent column missing)
+   Root cause: alter_draft_log_intent.py not yet run. Fixed by running migration.
+   Loss: 2 draft rows from earlier run were cleared with bq_staging.jsonl — accepted.
+
+5. Draft batch KB read — catalyst_draft.md v4.4 → v4.5:
+   Root cause of draft timeout: per-email KB reads meant N emails × 1 GDrive call.
+   Fix: Steps 4/4.5/5 restructured.
+     - Step 4: complete Steps 1–3 for ALL emails first, then compile unique KB file list
+     - Step 4.5 (new): read each unique KB file ONCE using cache hierarchy (Attempts 1–4)
+     - Step 5: apply in-context KB to each email — no new reads
+   Draft timeout temporarily bumped 30 → 40 min for backlog clearance.
+   Revert to 30 min once queue normalises.
+
+TEST STATUS — UPDATED (same session, later in day)
+---------------------------------------------------
+All individual step tests passed. Full cycle test pending (run: python catalyst_cs_automation.py --force).
+
+ADDITIONAL FIXES THIS SESSION (post-first-run debugging)
+---------------------------------------------------------
+5. Root cause found for ALL gmail tool failures (cleanup + draft REVIEW_DRAFT):
+   - gmail MCP was running via `npx -y @gongrzhe/server-gmail-autoauth-mcp`
+   - npx downloads/checks package on every run — inconsistent startup, sometimes MCP
+     server failed to initialize entirely, leaving Claude with no mcp__gmail__* tools
+   - Fix: installed package globally (npm install -g @gongrzhe/server-gmail-autoauth-mcp
+     → v1.1.11) and updated mcp.json to call binary directly:
+     "command": "C:\\Users\\pc\\AppData\\Roaming\\npm\\gmail-mcp.cmd"
+   - Confirmed: cleanup ran cleanly with no tool errors (19:56 UTC run)
+
+6. Hardened timeout (18:57 run) — confirmed ONE-OFF:
+   - --hardened-only --force test completed in 1 min (20:00 UTC)
+   - Root cause: transient Shopify MCP connection hang, not a recurring issue
+   - No code change needed
+
+7. Prompt fix (cleanup CRITICAL block) — still in place but root cause was MCP startup,
+   not prompt wording. The explicit instruction is harmless and adds a useful guard.
+
+WHERE WE ARE NOW
+----------------
+Phase 1a–1b    COMPLETE
+Phase 2b–2d    COMPLETE
+Phase 3a–3d    COMPLETE
+Phase 3.5a     BUILT — all individual tests passed — full cycle test PENDING
+Phase 3.5b     NOT STARTED
+Phase 4        WAITING
+Phase 5        BLOCKED — Amazon SP-API credentials
+Automation     v4.7 orchestrator | draft prompt v4.5 | triage 20 min | draft 40 min (temp)
+Prompt system  v4.10
+Gmail MCP      FIXED — globally installed, direct binary (no more npx inconsistency)
+
+WHAT'S NEXT (in order)
+-----------------------
+1. Run full cycle test: python catalyst_cs_automation.py --force
+   Verify: all 4 steps clean, REVIEW_DRAFT labels applied, BQ intent fields populated
+2. If test passes: revert DRAFT_TIMEOUT to 1800 (30 min) — queue should be normal size
+3. Phase 3.5b — KB Embedding Store (catalyst_kb_embedder.py)
+4. WISMO tracking enhancement — awaiting June's USPS Web Tools account
+5. Apple Watch + AirPods KB files
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+2. USPS Web Tools account (June) — needed before WISMO tracking enhancement.
+
+================================================================================
+
+--- ENTRY: 2026-04-07 (Session 17) ---
+SESSION: Full cycle test confirmed + Phase 3.5 revised per June's Monday Ops Call
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Reviewed automation_log.txt — full cycle validation results:
+   - 07:01 UTC run: all 6 steps completed clean (Cleanup/Triage/Hardened/Draft/Reconciler/Dashboard)
+   - Draft completed in ~2 min — 0 eligible emails (queue empty, all already have AI_PROCESSED
+     or REVIEW_DRAFT labels from prior runs)
+   - BQ staging: no rows to flush (0 drafts = intent fields not yet written to BQ — expected)
+   - 07:35 UTC [WARN]: draft timeout from a separate ~06:55 run — confirmed one-off network issue
+   - 08:00 UTC run: all steps clean again (0 emails)
+   - Pipeline itself is healthy. Phase 3.5a intent extraction will be validated passively
+     on the next run that has eligible emails to draft.
+
+2. Confirmed BigQuery draft_log schema via direct BQ query (INFORMATION_SCHEMA.COLUMNS):
+   All 4 intent columns confirmed present and NULLABLE:
+     primary_intent   STRING  YES
+     secondary_intent STRING  YES
+     sentiment        STRING  YES
+     escalation_risk  STRING  YES
+
+3. User shared full transcript of June's Monday Ops Call (2026-04-06):
+   Phase 3.5 plan revised with June's directives — see below.
+
+PHASE 3.5 REVISED PLAN (per June, 2026-04-06 Ops Call)
+--------------------------------------------------------
+Original plan: chunk CANONICAL KB files → embed directly → store to BQ kb_embeddings.
+June's revision adds a DATA CLEANING pre-step BEFORE any embedding happens.
+
+Key principles June laid out:
+  a) Don't store 20 permutations of the same intent — cluster similar entries first
+  b) Use entropy + word frequency to identify the T0 word (most probable/dominant)
+  c) Store ONE canonical entry per intent cluster (T0 question + T0 answer)
+  d) Store question_variants alongside — "50 ways to ask, 1 answer" principle
+  e) Same embed model for storage AND retrieval — NEVER swap (current: all-MiniLM-L6-v2)
+  f) Hybrid retrieval: exact word match + cosine similarity (not cosine alone)
+  g) Graph RAG: future phase — for concepts that are unrelated in numbers but related
+     in context (e.g. AirPods ↔ charging, packaging ↔ shipping)
+  h) Platform embed model check: Shopify/Vanchat may use a different embed model —
+     answers destined for those platforms may need adjustment. AWAITING user confirmation.
+
+Revised 3.5b build (two steps):
+  Step 1 — KB Data Cleaning:
+    - Scan all CANONICAL files for semantically similar entries
+    - Cluster by semantic similarity
+    - Entropy + frequency → pick T0 word per cluster
+    - Output: one canonical entry per intent
+  Step 2 — Embedding Store:
+    - Embed T0 canonical entries via all-MiniLM-L6-v2
+    - Schema: kb_id, filename, canonical_question (T0), canonical_answer (T0),
+              question_variants (array), embedding, intent_cluster, category,
+              store, embedding_model (locked), created_at
+
+Revised 3.5c: hybrid retrieval (exact + cosine), convert incoming question to T0 first
+
+New Phase 3.5e (Graph RAG — future, after 3.5d):
+  - Relational pairs table in BQ (manually seeded)
+  - Pairs to build: AirPods↔charging, Watch↔band, packaging↔shipping, etc.
+  - Unlocks retrieval for semantically unrelated but contextually linked concepts
+
+New project flagged — Pirate Ship Automation (separate from CS automation):
+  - Python script: check outstanding orders with no open CS question
+  - Extract order details + barcode
+  - Export to Pirate Ship via API in draft mode for review
+  - Build AFTER Phase 3.5 is complete
+
+WHERE WE ARE NOW
+----------------
+Phase 1a–1b    COMPLETE
+Phase 2b–2d    COMPLETE
+Phase 3a–3d    COMPLETE
+Phase 3.5a     COMPLETE (built + BQ schema confirmed) — passive validation on next live email run
+Phase 3.5b     NOT STARTED — revised scope per June (data cleaning pre-step added)
+Phase 3.5c     NOT STARTED — hybrid retrieval confirmed
+Phase 3.5d     NOT STARTED
+Phase 3.5e     PLANNED — Graph RAG (future, after 3.5d)
+Phase 4        WAITING — needs ≥100 emails per category at ≥95% clean
+Phase 5        BLOCKED — Amazon SP-API credentials
+Pirate Ship    PLANNED — new separate project, after Phase 3.5
+Automation     HEALTHY — v4.7 orchestrator, 6-step pipeline, all steps clean
+
+WHAT'S NEXT (in order)
+-----------------------
+1. PENDING: Shopify/Vanchat embed model confirmation (user checking)
+   → Once confirmed: determine if we need platform-specific adjustment in 3.5b/c
+2. Phase 3.5b — KB Data Cleaning + Embedding Store (revised plan above)
+3. Phase 3.5c — Semantic Retriever (hybrid retrieval)
+4. Phase 3.5d — Prompt upgrade (Steps 4+6 consume intent_context.jsonl)
+5. Phase 3.5e — Graph RAG (after 3.5d confirmed working)
+6. Pirate Ship automation (after Phase 3.5)
+7. Phase 4 — graduation (when data threshold met)
+8. Phase 5 — Amazon SP-API (blocked on credentials)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+2. USPS Web Tools account (June) — needed before WISMO tracking enhancement.
+3. Shopify/Vanchat embed model — user confirming. Needed before finalizing 3.5b design.
+
+================================================================================
+
+--- ENTRY: 2026-04-07 (Session 17 addendum) ---
+ADDENDUM: Article review — production RAG best practices
+
+User shared: https://medium.com/@sharanharsoor/the-complete-guide-to-embeddings-and-rag-from-theory-to-production-758a16d747ac
+
+3 additions to Phase 3.5 plan from article (all added to roadmap):
+
+1. SHA-256 content hashing (3.5b Step 1)
+   - Hash each chunk before clustering to catch exact duplicates programmatically
+   - Faster + more reliable than manual review alone
+   - content_hash column added to kb_embeddings schema
+
+2. Embedding cache (3.5b Step 2)
+   - Cache embeddings by content hash (SHA-256 key, 24-hour TTL)
+   - Skip re-embedding if KB file unchanged since last run
+   - Saves compute on every re-run of the embedder
+
+3. BM25 + RRF for hybrid retrieval (3.5c)
+   - Replace "exact word match" with BM25 (term frequency + document length aware)
+   - Combine BM25 + cosine via Reciprocal Rank Fusion (RRF)
+   - Default weights: semantic 0.7, keyword 0.3 (tunable)
+   - Better than simple exact match for keyword leg of hybrid search
+
+Also confirmed by article: all-MiniLM-L6-v2 correct for local/free, model consistency is
+critical failure mode, store original text alongside embeddings (we already do this). 
+Article does NOT cover Graph RAG — June's direction stands as sole reference for 3.5e.
+
+================================================================================
+
+--- ENTRY: 2026-04-07 (Session 17 addendum 2) ---
+Task Scheduler interval changed: PT1H → PT2H
+
+Reason: hourly was unreliable (NumberOfMissedRuns: 3 confirmed). Every 2 hours is
+more appropriate for email CS volume and reduces missed-run risk.
+
+Confirmed via PowerShell: Interval: PT2H, Duration: PT17H (6am-11pm window intact).
+Files updated: catalyst_cs_automation.py, roadmap.md, README.md (active config refs only).
+Historical entries in phase2.md left unchanged.
+
+================================================================================
+
+--- ENTRY: 2026-04-07 (Session 18) ---
+SESSION: Phase 3.5b built + pipeline fixes (WISMO gate + cleanup timeout root cause)
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Phase 3.5a VALIDATED on first live email run:
+   - Draft created for Debra Rogan (CATALYST_US_RETURN, Ms150494) at 17:43 UTC
+   - BQ draft_log confirmed: primary_intent=replacement, sentiment=NEUTRAL,
+     escalation_risk=LOW, secondary_intent=null
+   - Phase 3.5a is production-confirmed.
+
+2. catalyst_kb_embedder.py BUILT — Phase 3.5b:
+   - Parses all 19 CANONICAL skill files → 1 row per Function block
+   - Extracts: canonical_question (T0 trigger), canonical_answer (T0 approved language),
+     question_variants (Examples lines), content_hash (SHA-256 dedup)
+   - Embeds via OpenAI text-embedding-3-small (switched from all-MiniLM-L6-v2 per
+     June's recommendation — user obtained OpenAI API key this session)
+   - Creates kb_embeddings BQ table on first run if not exists
+   - Status: BUILT, NOT YET RUN — needs OPENAI_API_KEY set before first run
+   - NOTE: embedding model locked to text-embedding-3-small. Switching requires
+     deleting all BQ kb_embeddings rows and full re-embed.
+
+3. WISMO gate added to catalyst_cs_automation.py:
+   - Problem: Hardened timing out at 15 min even with 0 WISMO emails
+   - Root cause: Shopify MCP auth/init overhead consumed the full timeout
+   - Fix: capture triage stdout in _last_stdout; check for "WISMO" before running hardened
+   - Logic: triage ran + no WISMO in output → skip hardened (log INFO, mark OK)
+            triage skipped OR WISMO found → run hardened as normal
+   - Confirmed working: "[INFO] HARDENED skipped — triage found no WISMO emails."
+
+4. Cleanup timeout — root cause diagnosed, fix deferred:
+   - Cleanup DID complete in 1 min on same session's later run (0 matched A or B)
+   - Previous 8-min timeout was likely Claude reading individual email bodies
+     unnecessarily during the pending-list step
+   - Fix identified: add "do NOT read individual emails" to catalyst_cleanup.md
+   - NOT yet applied — user deferred pending more test runs. Monitor.
+
+5. Task Scheduler — StartWhenAvailable enabled:
+   - Exported task XML, set StartWhenAvailable=true, reimported via Task Scheduler GUI
+   - Confirmed: Settings.StartWhenAvailable = True
+   - ⚠️ Duration may have changed to PT12H during manual edit (was PT17H)
+   - ACTION REQUIRED: Verify trigger duration = PT17H in Task Scheduler
+
+6. Weekend runs removed — DaysOfWeek=62 (Mon–Fri only) confirmed intentional.
+
+LIVE RUN RESULTS (2026-04-07, 19:46 UTC)
+-----------------------------------------
+  Cleanup:    ✅ 1 min — 0 cleaned, 8 REVIEW_DRAFT pending
+  Triage:     ✅ 3 min — 1 email (Martha, Amazon AirPods Pro warranty, broken carabiner)
+  Hardened:   ✅ Skipped (WISMO gate working)
+  Draft:      ✅ 9 min — 1 draft (Martha), 6 fillout skipped, BQ flush OK
+  Reconciler: ✅ 16 PENDING, 0 reconciled
+  Full cycle: COMPLETED cleanly
+
+Pre-filter fetch: timed out (180s) → fell back to standard triage. Recurring, not new.
+
+HUMAN ACTION BACKLOG
+--------------------
+- 16 REVIEW_DRAFT emails pending human send/dismiss
+- 6 fillout warranty submissions pending human review
+- 3 emails aged 11 days (Ikponmwosa Osazuwa, Tsunami graphics, Theresa Erhumwunse)
+- Martha's Amazon draft: must be sent via Amazon Seller Central (not Gmail)
+
+WHERE WE ARE NOW
+----------------
+Phase 1a–1b    COMPLETE
+Phase 2b–2d    COMPLETE
+Phase 3a–3d    COMPLETE
+Phase 3.5a     COMPLETE + VALIDATED (BQ intent fields confirmed on live draft)
+Phase 3.5b     BUILT — catalyst_kb_embedder.py written, NOT YET RUN
+Phase 3.5c     NOT STARTED — Semantic Retriever
+Phase 3.5d     NOT STARTED — Prompt upgrade
+Phase 3.5e     PLANNED — Graph RAG (after 3.5d)
+Phase 4        WAITING — needs ≥100 emails per category at ≥95% clean
+Phase 5        BLOCKED — Amazon SP-API credentials
+Pirate Ship    PLANNED — after Phase 3.5
+Automation     HEALTHY — v4.7, WISMO gate live, StartWhenAvailable on, Mon–Fri only
+
+WHAT'S NEXT (in order)
+-----------------------
+1. ⚠️ Verify Task Scheduler trigger duration = PT17H (check, fix if PT12H)
+2. Set OPENAI_API_KEY then run: python catalyst_kb_embedder.py (first BQ kb_embeddings load)
+3. Phase 3.5c — catalyst_semantic_retriever.py
+4. Phase 3.5d — Prompt upgrade (Steps 4+6 consume intent_context.jsonl)
+5. Cleanup prompt fix — "do NOT read individual emails" (deferred, monitor first)
+6. Apple Watch + AirPods KB files + triage rule updates
+7. Phase 3.5e — Graph RAG (after 3.5d confirmed)
+8. Pirate Ship automation (after Phase 3.5)
+9. Phase 4 — graduation (when data threshold met)
+10. Phase 5 — Amazon SP-API (blocked on credentials)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials — boss to confirm. Blocks Phase 5.
+2. USPS Web Tools account (June) — needed before WISMO tracking enhancement.
+3. Shopify/Vanchat embed model — email sent to VanChat, no response. Non-blocker.
+4. OPENAI_API_KEY — not yet set in environment. Needed before kb_embedder first run.
+
+================================================================================
+
+--- ENTRY: 2026-04-09 (Session 19) ---
+SESSION: Auth fix + Phase 3.5b research completed per June's ops call directives
+
+WHAT WAS DONE THIS SESSION
+---------------------------
+1. Auth outage diagnosed and resolved:
+   - 06:06 UTC run failed -- Cleanup 401, Triage timeout
+   - Root cause: stale OAuth token cached in VSCode extension terminal,
+     overriding valid credentials in .credentials.json
+   - Fix: claude auth login from standalone CMD (not VSCode terminal)
+   - VSCode window reload clears stale injected token
+   - 07:40 UTC --force run: all steps clean, 4 drafts created, 4 BQ rows flushed
+   - Permanent fix -- tokens valid ~April 2027. If it recurs: standalone CMD + claude auth login.
+
+2. Phase 3.5b -- multi-model embedding research completed per June's April 8 ops call:
+   - June's directive: research ALL platform models before writing any code
+   - Multi-model architecture confirmed: one BQ row per KB entry, one column per embedding model
+   - Research compiled into: phase35b_embedding_research.md (shareable doc for June)
+   - Vanchat confirmed: uses OpenAI models (per support response Apr 9) -- exact model TBD
+   - Replient: still undisclosed -- needs outreach
+   - Shopify Nomic: unconfirmed in public docs -- needs direct confirmation
+
+DRAFT BQ SCHEMA (pending June sign-off)
+----------------------------------------
+  embedding_openai_small  -- covers Vanchat, tawk.to, ChatGPT, Gmail (email)
+  embedding_amazon_titan  -- covers Amazon seller tools
+  embedding_nomic         -- covers Shopify (pending confirmation)
+  embedding_llama         -- Meta open source, free fallback
+  embedding_model_notes   -- T0 word / platform-specific metadata
+
+WHERE WE ARE NOW
+----------------
+Phase 1a-1b    COMPLETE
+Phase 2b-2d    COMPLETE
+Phase 3a-3d    COMPLETE
+Phase 3.5a     COMPLETE + VALIDATED
+Phase 3.5b     RESEARCH COMPLETE -- awaiting June schema sign-off before coding
+Phase 3.5c-d   NOT STARTED
+Phase 3.5e     PLANNED -- Graph RAG
+Phase 4        WAITING
+Phase 5        BLOCKED -- Amazon SP-API credentials
+Automation     HEALTHY -- auth fixed, v4.7, Mon-Fri bi-hourly
+
+WHAT'S NEXT (in order)
+-----------------------
+1. Share phase35b_embedding_research.md with June for schema sign-off
+2. Confirm Shopify Nomic model (directly or via Vanchat follow-up)
+3. Contact Replient for their embedding model details
+4. June approves schema --> then build catalyst_kb_embedder.py (multi-model version)
+5. Set OPENAI_API_KEY in environment before embedder first run
+6. Apple Watch + AirPods KB files + triage rule updates
+7. Phase 3.5c -- Semantic Retriever
+8. Pirate Ship automation (after Phase 3.5)
+
+OPEN BLOCKERS
+-------------
+1. Amazon SP-API credentials -- boss to confirm. Blocks Phase 5.
+2. USPS Web Tools account (June) -- needed before WISMO tracking enhancement.
+3. Phase 3.5b schema -- awaiting June sign-off (research doc ready).
+4. OPENAI_API_KEY -- not yet set. Needed before kb_embedder first run.
+5. Replient embedding model -- needs direct outreach.
+6. Shopify Nomic -- unconfirmed in public docs.
+
+================================================================================

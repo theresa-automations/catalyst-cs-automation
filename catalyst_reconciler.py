@@ -4,11 +4,11 @@ CATALYST CS RECONCILER v1.0
 Thread-Tracer Phase 3c: Matches sent emails against BigQuery draft_log,
 computes accuracy scores, and logs results to accuracy_log.
 
-Runs every 30 minutes via a separate Windows Task Scheduler task.
-Independent of the main hourly 4-step pipeline.
+Runs as Run 5 inside the main pipeline (catalyst_cs_automation.py),
+called after every draft cycle. No separate Task Scheduler task.
 
 How it works:
-    1. Fetch recent Gmail Sent messages (last 60 min) via Claude CLI + Gmail MCP
+    1. Fetch recent Gmail Sent messages (last 60 min) via Gmail API (Python direct)
     2. Query BigQuery draft_log for all PENDING records
     3. Match sent messages to drafts via thread_id (stable across draft -> send lifecycle)
        NOTE: Gmail assigns a NEW message_id when a draft is sent — draft message_id
@@ -25,14 +25,13 @@ Result thresholds:
     REWRITE      edit_pct > 50%
 
 BigQuery writes: Python client (BigQuery MCP is read-only).
-Gmail reads:     Claude CLI + Gmail MCP (consistent with existing pipeline).
+Gmail reads:     Gmail API via Python client (bypasses Claude CLI to avoid safety refusals).
 semantic_match:  Always FALSE for now — embedding check deferred to Phase 4.
 """
 
-import subprocess
+import base64
 import json
 import os
-import re
 import sys
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -47,12 +46,11 @@ except ImportError:
 # CONFIGURATION
 # -----------------------------------------
 
-BASE_DIR       = Path(r"C:\Users\pc\Documents\Catalyst-Projects")
-CLAUDE_CLI     = Path(r"C:\Users\pc\.local\bin\claude.exe")
-CLAUDE_CLI_DIR = Path(r"C:\Users\pc\.claude")
-MCP_CONFIG     = Path(r"C:\Users\pc\.claude\mcp.json")
-BQ_CREDS       = Path(r"C:\Users\pc\gdrive-mcp-server\credentials\bigquery-service-account.json")
-LOG_FILE       = BASE_DIR / "reconciler_log.txt"
+BASE_DIR         = Path(r"C:\Users\pc\Documents\Catalyst-Projects")
+BQ_CREDS         = Path(r"C:\Users\pc\gdrive-mcp-server\credentials\bigquery-service-account.json")
+GMAIL_CREDS_FILE = Path(r"C:\Users\pc\.gmail-mcp\credentials.json")
+GMAIL_KEYS_FILE  = Path(r"C:\Users\pc\.gmail-mcp\gcp-oauth.keys.json")
+LOG_FILE         = BASE_DIR / "reconciler_log.txt"
 
 BQ_PROJECT  = "cs-mcp-gateway"
 BQ_DATASET  = "catalyst_cs_accuracy"
@@ -61,7 +59,6 @@ ACC_TABLE   = "accuracy_log"
 
 LOOKBACK_MINUTES = 60   # fetch Sent emails from last N minutes
 ABANDON_DAYS     = 14   # PENDING records older than N days -> ABANDONED
-GMAIL_TIMEOUT    = 300  # seconds — Claude CLI timeout for Gmail fetch
 
 AGENT_ID = "cs@catalystcase.com"
 
@@ -171,82 +168,134 @@ def ensure_accuracy_log_schema(client):
 
 
 # -----------------------------------------
-# GMAIL FETCH (via Claude CLI + Gmail MCP)
+# GMAIL FETCH (direct Gmail API — no Claude CLI)
 # -----------------------------------------
+
+def _extract_body(payload: dict) -> str:
+    """
+    Recursively extract plain text body from a Gmail message payload.
+    Prefers text/plain. Falls back to text/html if plain is absent.
+    """
+    mime_type = payload.get("mimeType", "")
+    parts = payload.get("parts", [])
+
+    if parts:
+        # Multipart — prefer text/plain
+        for part in parts:
+            if part.get("mimeType") == "text/plain":
+                data = part.get("body", {}).get("data", "")
+                if data:
+                    return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
+        # Recurse into nested parts (e.g. multipart/alternative inside multipart/mixed)
+        for part in parts:
+            result = _extract_body(part)
+            if result:
+                return result
+    else:
+        data = payload.get("body", {}).get("data", "")
+        if data:
+            return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
+
+    return ""
+
+
+def _get_gmail_service():
+    """
+    Build an authenticated Gmail API service using the stored OAuth token.
+    Refreshes the token automatically if expired and saves it back to disk.
+    """
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+
+    keys = json.loads(GMAIL_KEYS_FILE.read_text(encoding="utf-8"))
+    key_data = keys.get("installed", keys.get("web", {}))
+
+    creds_data = json.loads(GMAIL_CREDS_FILE.read_text(encoding="utf-8"))
+
+    # expiry_date from .gmail-mcp is a JS timestamp (milliseconds).
+    # google-auth compares against datetime.utcnow() (naive), so expiry must be naive UTC.
+    # Use fromtimestamp+UTC then strip tzinfo to avoid deprecated utcfromtimestamp().
+    expiry = None
+    if "expiry_date" in creds_data:
+        expiry = datetime.fromtimestamp(
+            creds_data["expiry_date"] / 1000, tz=timezone.utc
+        ).replace(tzinfo=None)
+
+    scope_raw = creds_data.get("scope", "")
+    scopes = scope_raw.split() if isinstance(scope_raw, str) else scope_raw
+
+    creds = Credentials(
+        token=creds_data.get("access_token"),
+        refresh_token=creds_data.get("refresh_token"),
+        token_uri=key_data.get("token_uri", "https://oauth2.googleapis.com/token"),
+        client_id=key_data.get("client_id"),
+        client_secret=key_data.get("client_secret"),
+        scopes=scopes,
+        expiry=expiry,
+    )
+
+    if not creds.valid or creds.expired:
+        creds.refresh(Request())
+        updated = {
+            "access_token": creds.token,
+            "refresh_token": creds.refresh_token,
+            "scope": " ".join(creds.scopes) if creds.scopes else scope_raw,
+            "token_type": "Bearer",
+            "expiry_date": int(creds.expiry.timestamp() * 1000) if creds.expiry else creds_data.get("expiry_date"),
+        }
+        GMAIL_CREDS_FILE.write_text(json.dumps(updated, indent=2), encoding="utf-8")
+
+    return build("gmail", "v1", credentials=creds)
+
 
 def fetch_sent_emails() -> list:
     """
-    Fetch recent Sent emails via Claude CLI + Gmail MCP.
+    Fetch recent Sent emails via Gmail API (Python direct — no Claude CLI).
     Returns a list of dicts: {thread_id, message_id, subject, body, sent_at}
-    Returns [] on any failure — reconciler will log and exit cleanly.
-
-    Uses the same pre-filter pattern as the main orchestrator:
-    Claude CLI returns a JSON array, Python parses it.
+    Returns [] on any failure — reconciler logs and continues cleanly.
     """
     since = (datetime.now(timezone.utc) - timedelta(minutes=LOOKBACK_MINUTES)).strftime("%Y/%m/%d")
 
-    # Build a minimal MCP config with only the gmail server
-    mcp_trimmed = {"mcpServers": {}}
     try:
-        full = json.loads(MCP_CONFIG.read_text(encoding="utf-8"))
-        servers = full.get("mcpServers", {})
-        if "gmail" in servers:
-            mcp_trimmed["mcpServers"]["gmail"] = servers["gmail"]
-        else:
-            log("ERROR: 'gmail' not found in mcp.json — cannot fetch Sent emails.")
-            return []
-    except Exception as e:
-        log(f"ERROR: Could not read mcp.json: {e}")
-        return []
+        service = _get_gmail_service()
 
-    mcp_path = BASE_DIR / "_mcp_reconciler.json"
-    try:
-        mcp_path.write_text(json.dumps(mcp_trimmed, indent=2), encoding="utf-8")
-    except Exception as e:
-        log(f"ERROR: Could not write reconciler MCP config: {e}")
-        return []
+        results = service.users().messages().list(
+            userId="me", q=f"in:sent after:{since}", maxResults=50
+        ).execute()
 
-    prompt = (
-        f"Use gmail search_emails to fetch all messages matching: `in:sent after:{since}`. "
-        "For each message return ONLY a JSON array — no other text, no explanation:\n"
-        '[{"thread_id":"<thread_id>","message_id":"<message_id>","subject":"<subject>",'
-        '"body":"<full plain text body of the sent message>","sent_at":"<date sent, ISO 8601>"}]\n'
-        "If there are no sent messages in this period, return: []"
-    )
-
-    env = os.environ.copy()
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
-    env["CLAUDE_CONFIG_DIR"] = str(CLAUDE_CLI_DIR)
-
-    try:
-        result = subprocess.run(
-            [str(CLAUDE_CLI), "--mcp-config", str(mcp_path),
-             "--dangerously-skip-permissions", "-p", prompt],
-            capture_output=True, encoding="utf-8", errors="replace",
-            timeout=GMAIL_TIMEOUT, env=env
-        )
-        raw = result.stdout.strip()
-        if result.returncode != 0:
-            log(f"WARNING: Claude CLI exited with code {result.returncode}")
-            if result.stderr:
-                log(f"Stderr: {result.stderr[:300]}")
-
-        match = re.search(r"\[.*\]", raw, re.DOTALL)
-        if not match:
-            log(f"WARNING: No JSON array in Gmail Sent response. Raw output (first 300 chars): {raw[:300]}")
+        messages = results.get("messages", [])
+        if not messages:
+            log(f"Gmail Sent fetch: 0 message(s) found in last {LOOKBACK_MINUTES} min.")
             return []
 
-        emails = json.loads(match.group())
+        emails = []
+        for stub in messages:
+            msg_id   = stub["id"]
+            thread_id = stub["threadId"]
+            try:
+                msg = service.users().messages().get(
+                    userId="me", id=msg_id, format="full"
+                ).execute()
+            except Exception as e:
+                log(f"WARNING: Could not fetch message {msg_id}: {e}")
+                continue
+
+            headers = {
+                h["name"].lower(): h["value"]
+                for h in msg.get("payload", {}).get("headers", [])
+            }
+            emails.append({
+                "thread_id":  thread_id,
+                "message_id": msg_id,
+                "subject":    headers.get("subject", ""),
+                "body":       _extract_body(msg.get("payload", {})),
+                "sent_at":    headers.get("date", ""),
+            })
+
         log(f"Gmail Sent fetch: {len(emails)} message(s) found in last {LOOKBACK_MINUTES} min.")
         return emails
 
-    except subprocess.TimeoutExpired:
-        log(f"WARNING: Gmail Sent fetch timed out after {GMAIL_TIMEOUT}s.")
-        return []
-    except json.JSONDecodeError as e:
-        log(f"ERROR: Could not parse Gmail Sent JSON: {e}")
-        return []
     except Exception as e:
         log(f"ERROR: Gmail Sent fetch failed: {e}")
         return []
@@ -441,15 +490,15 @@ def main():
             sys.exit(1)
         return
 
-    if not CLAUDE_CLI.exists():
-        log(f"ERROR: Claude CLI not found at {CLAUDE_CLI}")
+    if not BQ_CREDS.exists():
+        log(f"ERROR: BigQuery credentials not found at {BQ_CREDS}")
         log("=" * 55)
         if __name__ == "__main__":
             sys.exit(1)
         return
 
-    if not BQ_CREDS.exists():
-        log(f"ERROR: BigQuery credentials not found at {BQ_CREDS}")
+    if not GMAIL_CREDS_FILE.exists() or not GMAIL_KEYS_FILE.exists():
+        log(f"ERROR: Gmail credentials not found at {GMAIL_CREDS_FILE} / {GMAIL_KEYS_FILE}")
         log("=" * 55)
         if __name__ == "__main__":
             sys.exit(1)

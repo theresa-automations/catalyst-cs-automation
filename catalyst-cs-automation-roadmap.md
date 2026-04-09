@@ -19,7 +19,7 @@ category is trusted to send automatically.
 
 ## The Existing System (Baseline)
 
-The current automation runs as a 3-step hourly pipeline via Windows Task Scheduler:
+The current automation runs as a 3-step pipeline via Windows Task Scheduler (every 2 hours):
 
 ```
 Run 1 — Triage      Fetches unread emails, classifies them, applies Gmail labels
@@ -62,7 +62,7 @@ Triage → Cleanup → Draft → [Human reviews in Gmail] → Human sends
 
 ### Pipeline after all phases are complete:
 ```
-[Hourly cycle — existing]
+[Every 2 hours — existing]
 Triage → Cleanup → Draft →
     ├── Graduated categories ──→ AUTO-SEND + log to BigQuery
     └── Non-graduated ─────────→ REVIEW_DRAFT → Human reviews → Human sends
@@ -418,16 +418,58 @@ Phase 3.5: Triage → [Category label] → Semantic Retriever → Draft (top-3 K
 - **Test:** Run 5 emails, confirm JSON output is accurate and feeds into draft correctly
 
 **3.5b — KB Embedding Store** *(Stage 2a)*
+
+> ⚠️ Revised per June's Monday Ops Call (2026-04-07): Original plan was to chunk and embed
+> CANONICAL files directly. June's directive adds a mandatory DATA CLEANING pre-step before
+> any embedding. Original plan preserved below for reference.
+
+*Original plan (superseded):*
 - New script `catalyst_kb_embedder.py`: reads all CANONICAL skill files, chunks by Function row,
   generates local embeddings, stores to BigQuery `kb_embeddings` table
 - Schema: `kb_id`, `filename`, `chunk_text`, `embedding`, `category`, `store`,
   `embedding_model` (locked: `all-MiniLM-L6-v2`), `created_at`
-- **Test:** Run embedder, query BQ, confirm all KB chunks embedded and retrievable
+
+*Revised plan (active):*
+
+**Step 1 — KB Data Cleaning (pre-embedding)**
+- Scan all CANONICAL skill files for semantically similar entries (same intent, said differently)
+- **SHA-256 content hashing** — detect exact duplicate chunks programmatically before clustering
+  (production best practice: hash chunk text, skip duplicates before any embedding work)
+- Cluster remaining entries by semantic similarity
+- For each cluster: measure word frequency + entropy → pick the T0 word (most probable/dominant)
+- Collapse each cluster to ONE canonical entry (T0 question + T0 answer)
+- Principle per June: "50 ways to ask, 1 answer" — store the variants for recognition, not retrieval
+
+**Step 2 — Embedding Store**
+- Embed the cleaned T0 canonical entries using `all-MiniLM-L6-v2`
+- **50-token overlap** between chunks — prevents loss of context at chunk boundaries
+  (recommended: 300–512 tokens per chunk, 50-token overlap)
+- **Embedding cache by content hash** — if KB file unchanged since last run, skip re-embedding
+  (cache key = SHA-256 of chunk text; 24-hour TTL or until KB file changes)
+- Schema: `kb_id`, `filename`, `canonical_question` (T0), `canonical_answer` (T0),
+  `question_variants` (array — all ways to ask), `embedding`, `intent_cluster`,
+  `category`, `store`, `embedding_model` (locked: `all-MiniLM-L6-v2`), `content_hash`,
+  `created_at`
+- **Why T0 storage:** Prevents the LLM from hallucinating across 50 slightly different
+  variations. One definitive answer = higher retrieval accuracy. (June, 2026-04-07)
+
+> ℹ️ Shopify/Vanchat embed model — VanChat does not disclose their embed model publicly (support
+> email pending). Not a blocker: VanChat runs its own retrieval independently; our RAG is
+> email-pipeline only. Proceeding with `all-MiniLM-L6-v2`. Revisit if we integrate KB into VanChat.
+
+- **Test:** Run embedder, query BQ, confirm T0 canonical entries stored with question_variants and content_hash
 
 **3.5c — Semantic Retriever** *(Stage 2b)*
 - New script `catalyst_semantic_retriever.py`: embeds incoming emails, queries `kb_embeddings`
   for top-3 semantic matches per email, writes to `intent_context.jsonl`
 - Runs as Run 3.5 in orchestrator (between Hardened and Draft)
+- **Retrieval method (revised per June + article):** Hybrid using **BM25 + cosine similarity**
+  combined via **Reciprocal Rank Fusion (RRF)**
+  - Convert incoming question to T0 first, then run both searches in parallel
+  - BM25 keyword search (term frequency + document length aware) — better than simple exact match
+  - Cosine similarity against `all-MiniLM-L6-v2` embeddings
+  - RRF combines both result lists into a single ranked output
+  - Default weights: semantic 0.7, keyword 0.3 (tunable)
 - **Test:** Run on 5 real emails, inspect `intent_context.jsonl`, confirm matches are semantically correct
 
 **3.5d — Prompt Upgrade** *(Stage 3)*
@@ -435,6 +477,21 @@ Phase 3.5: Triage → [Category label] → Semantic Retriever → Draft (top-3 K
   instead of rigid label→filename table
 - Claude receives: email + intent/sentiment + top-3 KB chunks + Shopify data
 - **Test:** Run 20 real emails, compare edit_distance in accuracy_log vs pre-3.5 baseline
+
+**3.5e — Graph RAG** *(Future — after 3.5d confirmed working)*
+
+> New phase added per June's Monday Ops Call (2026-04-07).
+
+- For concepts that are semantically unrelated in embedding space but contextually linked
+  (e.g. "AirPods" ↔ "charging", "Watch" ↔ "band compatibility", "packaging" ↔ "shipping")
+- The embed model (trained externally, not by us) cannot be retrained — Graph RAG corrects for it
+- Implementation: manually seeded `graph_pairs` table in BigQuery
+  - Columns: `concept_a`, `concept_b`, `relationship_type`, `notes`
+  - Initial pairs to build: AirPods↔charging, Watch↔band, packaging↔shipping (expand over time)
+- Retriever checks graph pairs when cosine similarity returns no good match
+- **Why it matters:** Unlocks retrieval for related concepts the embed model considers unrelated.
+  Significantly improves accuracy for cross-category questions (e.g. AirPods + charging case combo)
+- **Test:** Seed a relational pair, run a cross-concept query, confirm retriever surfaces correct KB entry
 
 ---
 
@@ -445,9 +502,14 @@ Phase 3.5: Triage → [Category label] → Semantic Retriever → Draft (top-3 K
 | 1 | Shopify CLI + BigQuery infrastructure | Shopify CLI, GCP, BigQuery | ✅ Complete (1a + 1b) |
 | 2 | WISMO + hardened flows | Python, Shopify AdminAPI, Temperature 0 | ✅ Complete (2b, 2c, 2d) |
 | 3 | Accuracy counter (Thread-Tracer) | Python, BigQuery, Levenshtein distance | ✅ Complete (3a/3b/3c/3d) |
-| 3.5 | Intent layer + semantic KB retrieval | sentence-transformers, BigQuery vector search | 🔄 In progress — planning complete, building Stage 1 |
+| 3.5a | Intent + sentiment extraction | Claude structured JSON, BigQuery columns | ✅ Complete — passive validation pending live email |
+| 3.5b | KB data cleaning + embedding store | Python, sentence-transformers, BigQuery | 🔄 Next — revised plan (T0 cleaning pre-step) |
+| 3.5c | Semantic retriever (hybrid) | Python, cosine similarity + exact match | Not started |
+| 3.5d | Prompt upgrade | catalyst_draft.md, intent_context.jsonl | Not started |
+| 3.5e | Graph RAG — relational pairs | BigQuery graph_pairs table | Planned — after 3.5d |
 | 4 | Graduation to auto-reply | BigQuery queries, config toggle | Waiting on Phase 3.5 data |
 | 5 | Amazon connector | SP-API, webhooks, Python | **Blocked — SP-API credentials needed** |
+| — | Pirate Ship automation | Python, Pirate Ship API | Planned — separate project, after Phase 3.5 |
 
 ---
 
@@ -458,8 +520,10 @@ Phase 3.5: Triage → [Category label] → Semantic Retriever → Draft (top-3 K
 | ~~1~~ | ~~WISMO labels~~ | ✅ Resolved — new dedicated labels `CATALYST_US_WISMO` / `CATALYST_LIFESTYLE_WISMO` |
 | ~~2~~ | ~~BigQuery staging~~ | ✅ Resolved — Claude writes directly to BigQuery via MCP/API |
 | 3 | Amazon SP-API: developer registration status and credential availability for US, CA, UK? | Blocks Phase 5 entirely |
+| 4 | Shopify/Vanchat embed model: what embed model do these platforms use internally? | VanChat does not publicly disclose their embed model. Likely OpenAI (`text-embedding-ada-002` or `text-embedding-3-small`) given GPT-4o/Claude 3 LLM stack. Support email sent — awaiting response. **Not a blocker for Phase 3.5:** VanChat handles its own live chat retrieval independently (crawls Shopify directly). Our Phase 3.5 RAG is email-pipeline only. Mismatch only matters if we later feed our KB into VanChat — not on current roadmap. Proceeding with `all-MiniLM-L6-v2`. |
+| 5 | USPS Web Tools account (User ID) — June to provide | Blocks WISMO live tracking enhancement |
 
 ---
 
 *Document maintained in: `C:\Users\pc\Documents\Catalyst-Projects\catalyst-cs-automation-roadmap.md`*
-*Last updated: March 2026*
+*Last updated: April 2026 — Phase 3.5 revised per June's Monday Ops Call (2026-04-07)*

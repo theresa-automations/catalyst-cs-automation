@@ -2,11 +2,11 @@
 CATALYST CS AUTOMATION SCRIPT v4.7
 ====================================
 Orchestrates the Catalyst CS workflow via Claude CLI.
-Runs hourly, 6:00 AM - 11:00 PM WAT, 7 days a week.
+Runs every 2 hours, 6:00 AM - 11:00 PM WAT, 7 days a week.
 
 Four sequential Claude runs per cycle:
-    Run 1 - Triage    (catalyst_triage.md)          :  15 min timeout - Gmail only
-    Run 2 - Cleanup   (catalyst_cleanup.md)         :   8 min timeout - Gmail only
+    Run 1 - Cleanup   (catalyst_cleanup.md)         :   8 min timeout - Gmail only
+    Run 2 - Triage    (catalyst_triage.md)          :  15 min timeout - Gmail only
     Run 3 - Hardened  (catalyst_hardened_flows.md)  :  15 min timeout - Gmail + Shopify (no GDrive)
     Run 4 - Draft     (catalyst_draft.md)           :  30 min timeout - Gmail + Shopify + GDrive
 
@@ -123,10 +123,10 @@ BUSINESS_HOUR_START = 6    # 6:00 AM WAT
 BUSINESS_HOUR_END   = 23   # 11:00 PM WAT
 WAT_OFFSET          = 1    # WAT = UTC+1
 
-TRIAGE_TIMEOUT   = 900   # 15 minutes  - Gmail only
+TRIAGE_TIMEOUT   = 1200  # 20 minutes  - Gmail only (bumped from 15 — 14+ LLM emails hitting timeout)
 CLEANUP_TIMEOUT  = 480   #  8 minutes  - Gmail only (2 searches instead of N reads)
 HARDENED_TIMEOUT = 900   # 15 minutes  - Gmail + Shopify (no GDrive)
-DRAFT_TIMEOUT    = 1800  # 30 minutes  - Shopify + GDrive + Gmail
+DRAFT_TIMEOUT    = 2400  # 40 minutes  - Shopify + GDrive + Gmail (bumped from 30 — backlog clearance buffer; revert to 1800 once queue normalises)
 
 LOG_MAX_BYTES   = 5 * 1024 * 1024  # 5 MB - rotate log at this size
 
@@ -185,25 +185,33 @@ def flush_bq_staging():
                 sql = f"""
                 INSERT INTO `{table_id}`
                   (draft_id, thread_id, message_id, created_at, email_category,
-                   sender_email, subject, claude_draft, shopify_order_id, store, status)
+                   sender_email, subject, claude_draft, shopify_order_id, store,
+                   primary_intent, secondary_intent, sentiment, escalation_risk,
+                   status)
                 VALUES
                   (@draft_id, @thread_id, @message_id,
                    TIMESTAMP(@created_at),
                    @email_category, @sender_email, @subject, @claude_draft,
-                   @shopify_order_id, @store, 'PENDING')
+                   @shopify_order_id, @store,
+                   @primary_intent, @secondary_intent, @sentiment, @escalation_risk,
+                   'PENDING')
                 """
                 job_config = _bq.QueryJobConfig(
                     query_parameters=[
-                        _bq.ScalarQueryParameter("draft_id",         "STRING", row.get("draft_id")),
-                        _bq.ScalarQueryParameter("thread_id",        "STRING", row.get("thread_id")),
-                        _bq.ScalarQueryParameter("message_id",       "STRING", row.get("message_id")),
-                        _bq.ScalarQueryParameter("created_at",       "STRING", row.get("created_at")),
-                        _bq.ScalarQueryParameter("email_category",   "STRING", row.get("email_category")),
-                        _bq.ScalarQueryParameter("sender_email",     "STRING", row.get("sender_email")),
-                        _bq.ScalarQueryParameter("subject",          "STRING", row.get("subject")),
-                        _bq.ScalarQueryParameter("claude_draft",     "STRING", row.get("claude_draft")),
-                        _bq.ScalarQueryParameter("shopify_order_id", "STRING", row.get("shopify_order_id")),
-                        _bq.ScalarQueryParameter("store",            "STRING", row.get("store")),
+                        _bq.ScalarQueryParameter("draft_id",          "STRING", row.get("draft_id")),
+                        _bq.ScalarQueryParameter("thread_id",         "STRING", row.get("thread_id")),
+                        _bq.ScalarQueryParameter("message_id",        "STRING", row.get("message_id")),
+                        _bq.ScalarQueryParameter("created_at",        "STRING", row.get("created_at")),
+                        _bq.ScalarQueryParameter("email_category",    "STRING", row.get("email_category")),
+                        _bq.ScalarQueryParameter("sender_email",      "STRING", row.get("sender_email")),
+                        _bq.ScalarQueryParameter("subject",           "STRING", row.get("subject")),
+                        _bq.ScalarQueryParameter("claude_draft",      "STRING", row.get("claude_draft")),
+                        _bq.ScalarQueryParameter("shopify_order_id",  "STRING", row.get("shopify_order_id")),
+                        _bq.ScalarQueryParameter("store",             "STRING", row.get("store")),
+                        _bq.ScalarQueryParameter("primary_intent",    "STRING", row.get("primary_intent")),
+                        _bq.ScalarQueryParameter("secondary_intent",  "STRING", row.get("secondary_intent")),
+                        _bq.ScalarQueryParameter("sentiment",         "STRING", row.get("sentiment")),
+                        _bq.ScalarQueryParameter("escalation_risk",   "STRING", row.get("escalation_risk")),
                     ]
                 )
                 job = client.query(sql, job_config=job_config)
@@ -533,12 +541,18 @@ def _kill_process_tree(pid: int):
         pass
 
 
+_last_stdout: str = ""   # stdout of the most recent _run_prompt call (for post-run inspection)
+
+
 def _run_prompt(label: str, prompt: str, timeout: int, env: dict,
                 mcp_config: Path = None) -> bool:
     """
     Core runner: launches Claude CLI, enforces timeout via process-tree kill.
     Used by both run_claude_prompt and run_claude.
+    Stores stdout in _last_stdout for post-run inspection (e.g. WISMO gate).
     """
+    global _last_stdout
+    _last_stdout = ""
     cfg = mcp_config or MCP_CONFIG_PATH
     log(f"-- Starting {label} (timeout: {timeout // 60} min) --")
     proc = None
@@ -557,6 +571,7 @@ def _run_prompt(label: str, prompt: str, timeout: int, env: dict,
             log(f"[WARN] {label} timed out after {timeout // 60} minutes.")
             return False
 
+        _last_stdout = stdout or ""
         if stdout:
             log(f"-- {label} Output --")
             log(stdout)
@@ -733,7 +748,7 @@ def run_automation(force: bool = False,
                    run_draft: bool = True):
     rotate_log_if_needed()
     log("=" * 55)
-    log("Catalyst CS Automation v4.6 started")
+    log("Catalyst CS Automation v4.7 started")
     log(f"WAT time: {get_wat_time()}  |  Force: {force}  |  "
         f"Triage: {run_triage}  |  Cleanup: {run_cleanup}  |  "
         f"Hardened: {run_hardened}  |  Draft: {run_draft}")
@@ -768,7 +783,13 @@ def run_automation(force: bool = False,
     hardened_ok = True
     draft_ok    = True
 
-    # Run 1: Triage (with Python pre-filter)
+    # Run 1: Cleanup
+    if run_cleanup:
+        cleanup_cfg = build_mcp_config("cleanup")
+        cleanup_ok = run_claude("CLEANUP", CLEANUP_FILE, CLEANUP_TIMEOUT, env,
+                                cleanup_cfg)
+
+    # Run 2: Triage (with Python pre-filter)
     if run_triage:
         triage_cfg = build_mcp_config("triage")
         base_prompt = PREAMBLE + TRIAGE_FILE.read_text(encoding="utf-8")
@@ -779,18 +800,19 @@ def run_automation(force: bool = False,
         triage_ok = run_claude_prompt("TRIAGE", triage_prompt, TRIAGE_TIMEOUT, env,
                                       triage_cfg)
 
-    # Run 2: Cleanup
-    if run_cleanup:
-        cleanup_cfg = build_mcp_config("cleanup")
-        cleanup_ok = run_claude("CLEANUP", CLEANUP_FILE, CLEANUP_TIMEOUT, env,
-                                cleanup_cfg)
-
     # Run 3: Hardened Flows (deterministic categories — no LLM creativity)
     # Runs before draft so processed emails get REVIEW_DRAFT and are skipped by draft.
+    # WISMO gate: if triage ran and found no WISMO emails, skip hardened entirely.
+    # This prevents loading Shopify MCP servers unnecessarily (saves ~15 min on empty runs).
     if run_hardened:
-        hardened_cfg = build_mcp_config("hardened")
-        hardened_ok = run_claude("HARDENED", HARDENED_FILE, HARDENED_TIMEOUT, env,
-                                 hardened_cfg)
+        triage_had_wismo = (not run_triage) or ("WISMO" in _last_stdout)
+        if not triage_had_wismo:
+            log("[INFO] HARDENED skipped — triage found no WISMO emails. Shopify MCPs not loaded.")
+            hardened_ok = True
+        else:
+            hardened_cfg = build_mcp_config("hardened")
+            hardened_ok = run_claude("HARDENED", HARDENED_FILE, HARDENED_TIMEOUT, env,
+                                     hardened_cfg)
 
     # Run 4: Draft (runs even if prior steps had issues)
     if run_draft:

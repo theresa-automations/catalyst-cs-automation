@@ -7,7 +7,7 @@ Automates email triage, draft generation, accuracy tracking, and graduated auto-
 
 ## What It Does
 
-Runs hourly (6am–11pm WAT, 7 days a week) via Windows Task Scheduler.
+Runs every 2 hours (6am–11pm WAT, 7 days a week) via Windows Task Scheduler.
 Every cycle executes 6 sequential steps:
 
 | Run | Step | What it does |
@@ -139,7 +139,7 @@ SHOPIFY_TOKEN_CATALYSTLIFESTYLE=your_token
 **BigQuery credentials:** service account JSON at
 `C:\Users\pc\gdrive-mcp-server\credentials\bigquery-service-account.json`
 
-**Task Scheduler:** runs `catalyst_cs_automation.py` hourly, 6am–11pm WAT, daily.
+**Task Scheduler:** runs `catalyst_cs_automation.py` every 2 hours, 6am–11pm WAT, daily.
 
 ---
 

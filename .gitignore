@@ -39,3 +39,8 @@ _mcp_*.json
 # Windows
 Thumbs.db
 Desktop.ini
+# VSCode workspace settings (local only)
+.vscode/
+
+# Knowledge base / CANONICAL skill files (internal, not for repo)
+Claude_KB/
