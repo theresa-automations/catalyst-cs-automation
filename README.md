@@ -7,13 +7,13 @@ Automates email triage, draft generation, accuracy tracking, and graduated auto-
 
 ## What It Does
 
-Runs every 2 hours (6am–11pm WAT, 7 days a week) via Windows Task Scheduler.
+Runs every 2 hours (6am–11pm WAT, Mon–Fri) via Windows Task Scheduler.
 Every cycle executes 6 sequential steps:
 
 | Run | Step | What it does |
 |-----|------|--------------|
-| 1 | Triage | Fetches unread inbox emails, classifies into categories, applies Gmail labels |
-| 2 | Cleanup | Removes REVIEW_DRAFT from threads already attended to |
+| 1 | Cleanup | Removes REVIEW_DRAFT from threads already attended to |
+| 2 | Triage | Fetches unread inbox emails, classifies into categories, applies Gmail labels |
 | 3 | Hardened Flows | Deterministic handling for WISMO (order tracking) — no LLM, pure Shopify data |
 | 4 | Draft | Fetches Shopify order data + KB, generates Gmail drafts for human review |
 | 5 | Reconciler | Compares sent emails to original drafts, scores accuracy, logs to BigQuery |
@@ -29,10 +29,10 @@ All emails are **Human-in-the-Loop** until a category earns ≥95% accuracy over
 Gmail Inbox
     │
     ▼
-[Run 1 — Triage]         → Gmail labels (CATALYST_US_*, CATALYST_LIFESTYLE_*, B2B_FILTERED)
+[Run 1 — Cleanup]        → Removes REVIEW_DRAFT from attended threads
     │
     ▼
-[Run 2 — Cleanup]        → Removes REVIEW_DRAFT from attended threads
+[Run 2 — Triage]         → Gmail labels (CATALYST_US_*, CATALYST_LIFESTYLE_*, B2B_FILTERED)
     │
     ▼
 [Run 3 — Hardened Flows] → WISMO: Shopify tracking data → fixed template → REVIEW_DRAFT
@@ -75,13 +75,12 @@ Gmail Inbox
 | File | Purpose |
 |------|---------|
 | `catalyst_cs_automation.py` | Main orchestrator — runs all 6 steps |
-| `catalyst_triage.md` | Triage prompt (Step 1 of 4) |
-| `catalyst_cleanup.md` | Cleanup prompt (Step 2 of 4) |
-| `catalyst_hardened_flows.md` | WISMO hardened flows prompt (Step 3 of 4) |
-| `catalyst_draft.md` | Draft generation prompt (Step 4 of 4) |
+| `catalyst_cleanup.md` | Cleanup prompt (Run 1) |
+| `catalyst_triage.md` | Triage prompt (Run 2) |
+| `catalyst_hardened_flows.md` | WISMO hardened flows prompt (Run 3) |
+| `catalyst_draft.md` | Draft generation prompt (Run 4) |
 | `catalyst_reconciler.py` | Accuracy reconciler (Run 5) |
 | `catalyst_accuracy_dashboard.py` | Weekly accuracy report (Run 6) |
-| `Claude_KB/Skills/` | CANONICAL skill files — source of truth for all CS responses |
 | `state_of_things_log.txt` | Session-by-session project log |
 | `catalyst-cs-automation-roadmap.md` | Full phased roadmap with specs |
 | `catalyst-cs-automation-phase2.md` | Architecture decisions + improvement history |
@@ -127,7 +126,7 @@ Gmail Inbox
 
 **Requirements:**
 ```
-pip install google-cloud-bigquery sentence-transformers
+pip install google-cloud-bigquery openai google-api-python-client google-auth-httplib2 google-auth-oauthlib
 ```
 
 **Secrets** (not in repo — create `secrets.env`):
@@ -139,7 +138,7 @@ SHOPIFY_TOKEN_CATALYSTLIFESTYLE=your_token
 **BigQuery credentials:** service account JSON at
 `C:\Users\pc\gdrive-mcp-server\credentials\bigquery-service-account.json`
 
-**Task Scheduler:** runs `catalyst_cs_automation.py` every 2 hours, 6am–11pm WAT, daily.
+**Task Scheduler:** runs `catalyst_cs_automation.py` every 2 hours, 6am–11pm WAT, Mon–Fri.
 
 ---
 
@@ -152,4 +151,4 @@ All agents operate under the **Catalyst Accuracy Constitution v1.0**:
 
 ---
 
-*Last updated: March 2026*
+*Last updated: April 2026*
