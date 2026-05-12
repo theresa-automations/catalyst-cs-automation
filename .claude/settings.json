@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__shopify-manager-catalystcase__listProducts",
+      "mcp__shopify-manager-catalystlifestyle__listProducts"
+    ]
+  }
+}

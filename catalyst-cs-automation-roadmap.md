@@ -493,6 +493,71 @@ Phase 3.5: Triage → [Category label] → Semantic Retriever → Draft (top-3 K
   Significantly improves accuracy for cross-category questions (e.g. AirPods + charging case combo)
 - **Test:** Seed a relational pair, run a cross-concept query, confirm retriever surfaces correct KB entry
 
+**3.5f — Draft Edit Feedback Loop (Self-Learning Layer)** *(After 3.5d confirmed working)*
+
+> Added 2026-04-17. Leverages existing BigQuery data already being collected — no new
+> infrastructure required beyond a schema addition and a new Python script.
+
+**What it does:**
+When the reconciler logs `result = MAJOR_EDIT` or `REWRITE`, the system extracts what the human
+actually sent, identifies which KB entries were retrieved for that draft, and feeds that signal
+back into the knowledge base — so the system learns from every correction without manual KB maintenance.
+
+**Why this works without new infrastructure:**
+- `accuracy_log` already has `edit_distance`, `result`, `claude_draft` (via join), and `final_sent`
+- `draft_log` already has `primary_intent`, `sentiment`, `email_category`
+- The only missing link: which `kb_id(s)` were used — needs one new column in `draft_log`
+
+**Required schema change (prerequisite):**
+- Add `kb_ids_used STRING` (comma-separated) to `draft_log` — populated by the semantic retriever
+  at the time the draft is created (Run 3.5 writes top-3 `kb_id` values to `intent_context.jsonl`;
+  draft agent includes them in the BQ staging row)
+- One-time migration: `alter_draft_log_kb_ids.py` (same pattern as prior migrations)
+
+**Feedback loop logic (new script: `catalyst_feedback_loop.py`):**
+```
+When accuracy_log.result IN ('MAJOR_EDIT', 'REWRITE'):
+  1. Fetch final_sent from accuracy_log
+  2. Fetch kb_ids_used from draft_log
+  3. For each kb_id retrieved:
+     a. Flag the kb_embeddings row: feedback_flag = REVIEW_NEEDED
+     b. Queue the human-sent version as a candidate question_variant
+  4. Write to new BQ table: feedback_queue
+     - draft_id, kb_ids_used, claude_draft, final_sent, edit_pct, primary_intent, created_at
+     - status: PENDING_REVIEW
+```
+
+**Human review step (HITL — not automated):**
+- Weekly: operator reviews `feedback_queue` entries (same cadence as accuracy dashboard)
+- For each PENDING_REVIEW entry, operator decides:
+  - PROMOTE: add `final_sent` version as new `question_variant` in the relevant CANONICAL skill file
+  - SKIP: mark reviewed, no change
+  - ESCALATE: KB entry needs a full rewrite (flag for next KB audit session)
+- Approved variants re-run through `catalyst_kb_embedder.py` to update embeddings
+
+**New BQ table: `feedback_queue`**
+```sql
+draft_id         STRING    -- FK → draft_log
+kb_ids_used      STRING    -- which KB entries were retrieved
+claude_draft     STRING    -- what Claude wrote
+final_sent       STRING    -- what human actually sent
+edit_pct         FLOAT     -- from accuracy_log
+primary_intent   STRING    -- from draft_log
+email_category   STRING    -- from draft_log
+status           STRING    -- PENDING_REVIEW / PROMOTED / SKIPPED / ESCALATED
+created_at       TIMESTAMP
+reviewed_at      TIMESTAMP
+```
+
+**Dependencies (must be complete before 3.5f can be built):**
+1. Phase 3.5b — `kb_embeddings` table must exist (to flag rows)
+2. Phase 3.5c — semantic retriever must be writing `kb_ids_used` to staging
+3. Phase 3.5d — prompt upgrade must be live (so retrieved KB entries are meaningful)
+4. Schema migration: `kb_ids_used` column added to `draft_log`
+
+**Test:** Manually seed a MAJOR_EDIT row in accuracy_log → confirm feedback_queue populated.
+  Promote one entry → re-run embedder → confirm updated variant appears in kb_embeddings.
+
 ---
 
 ## Summary Table
@@ -507,6 +572,7 @@ Phase 3.5: Triage → [Category label] → Semantic Retriever → Draft (top-3 K
 | 3.5c | Semantic retriever (hybrid) | Python, cosine similarity + exact match | Not started |
 | 3.5d | Prompt upgrade | catalyst_draft.md, intent_context.jsonl | Not started |
 | 3.5e | Graph RAG — relational pairs | BigQuery graph_pairs table | Planned — after 3.5d |
+| 3.5f | Draft edit feedback loop (self-learning) | Python, BigQuery feedback_queue, HITL review | Planned — after 3.5d; uses existing BQ data |
 | 4 | Graduation to auto-reply | BigQuery queries, config toggle | Waiting on Phase 3.5 data |
 | 5 | Amazon connector | SP-API, webhooks, Python | **Blocked — SP-API credentials needed** |
 | — | Pirate Ship automation | Python, Pirate Ship API | Planned — separate project, after Phase 3.5 |

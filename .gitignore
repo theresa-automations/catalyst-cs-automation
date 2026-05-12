@@ -25,6 +25,7 @@ intent_context.jsonl
 automation_log*.txt
 reconciler_log*.txt
 accuracy_report_*.txt
+security_quarantine_log.txt
 
 # Keep accuracy_report_latest.txt out too (regenerated each Monday)
 accuracy_report_latest.txt
