@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "mcp__bigquery__query",
-      "mcp__local-files__read_text_file"
-    ]
-  }
-}
